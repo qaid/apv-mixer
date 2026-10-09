@@ -9,7 +9,7 @@
 
 ### 2026-10-10, P1
 
-Commit: not yet committed (working tree on base `7b5c4f8`).
+Commit: `ddefdb4` (tested build: the same code, before the commit).
 
 Round 1:
 - AC8: pass
