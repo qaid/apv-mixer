@@ -50,7 +50,7 @@ A small native macOS mixer app that looks like a DJ mixer. It does two jobs:
    - Sound Effects: the device that plays sound effects, as an explicit device only.
    - Left out under R8 (no documented API): alert sound choice, alert volume, play user interface sound effects, play feedback when volume is changed, play sound on startup.
 6. **Two-way sync:** changes made in the mixer show in System Settings, and changes made in System Settings, Control Center or the volume keys show in the mixer.
-7. **Persistence:** names, trim, fader and mute saved per input device (by device UID) and per app (by bundle ID), restored on relaunch and on reconnect.
+7. **Persistence:** names, trim, fader and mute saved per input device (by device UID) and per app (by bundle ID), restored on relaunch and on reconnect. Store: `UserDefaults`, one dictionary for input devices and one for apps, written on each change ([Last spec gaps](https://github.com/qaid/apv-mixer/issues/15)).
 
 ### Out of scope (v1)
 
@@ -113,7 +113,7 @@ This is the most likely failure point. Handle it explicitly.
 
 **Master strip:** output device menu (D7; lists every output device), "Sound effects through" menu (an explicit device; a short note says that a choice here stops macOS from following the selected output) ([Engine and control list](https://github.com/qaid/apv-mixer/issues/8)), balance knob (double-click to center), mute, master fader (D8), stereo meter with clip light.
 
-**Status line:** sample rate, estimated latency in ms, audio CPU load.
+**Status line:** sample rate, estimated latency in ms, audio CPU load. CPU load: the IOProc reads the host clock at its start and end and writes the time used, as a share of the buffer period, to an atomic; the UI shows the highest value of the last 0.5 s. It measures the mixer's own audio work only ([Last spec gaps](https://github.com/qaid/apv-mixer/issues/15)).
 
 **Window:** one mixer window (D11).
 
@@ -147,7 +147,7 @@ This is the most likely failure point. Handle it explicitly.
 | R4 | Built-in mic feeding back into speakers. | D4: new inputs start silent. |
 | R5 | Process tap APIs are newer and thinly documented, so it's easy to invent wrong API names. | Before coding phase 3, read Apple's current Core Audio tap documentation and sample code, plus FineTune's source as a working example. Cite what you used in `implementation-notes.md`. |
 | R6 | Rebuilding with a different signature resets permissions. | D5; explain in README. |
-| R7 | Loopback also sends the turntable to the speakers, so the record plays twice or echoes. | README tells the owner to remove Loopback's Monitor for the turntable (or quit Loopback) when using the mixer. |
+| R7 | Loopback also sends the turntable to the speakers, so the record plays twice or echoes. | README tells the owner to remove Loopback's Monitor for the turntable (or quit Loopback) when using the mixer. Loopback is installed on the owner's Mac. Hiding software devices does not stop its monitor, so the step stays; the mixer shows no hint ([Last spec gaps](https://github.com/qaid/apv-mixer/issues/15)). |
 | R8 | Some Sound Effects settings (alert sound choice, startup sound, interface sounds, volume feedback) may have no supported public API, or may need admin rights. | For each one, find a supported method first. If none exists, leave that control out, log it under "Deviations", and tell the owner at the end of the phase. Do not use private APIs or edit system files silently. Result: alert sound choice, alert volume, UI sound effects, volume feedback and startup sound are left out ([Engine and control list](https://github.com/qaid/apv-mixer/issues/8)). |
 
 ---
