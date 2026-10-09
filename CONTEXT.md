@@ -11,7 +11,7 @@ Something that produces audio the mixer can carry: an input device or an app.
 _Avoid_: input (alone), stream
 
 **Strip**:
-The vertical column of controls for one source, or for Sound Effects, or for the master output.
+The vertical column of controls for one source, or for the master output.
 _Avoid_: channel, track, lane
 
 **Input strip**:
@@ -21,7 +21,7 @@ A strip for one hardware input device.
 A strip for one running app that produces audio.
 
 **Master strip**:
-The strip for the default output device: output menu, master fader, balance, mute, meter.
+The strip for the default output device: output menu, sound effects device menu, master fader, balance, mute, meter.
 
 **Channel**:
 One audio channel inside a signal (left, right). Never a strip.
@@ -32,16 +32,16 @@ One audio channel inside a signal (left, right). Never a strip.
 An audio device backed by real hardware (built-in, USB, Bluetooth, HDMI). Only hardware input devices get input strips.
 
 **Software device**:
-An audio device made by software, such as an audio routing app or a conferencing app driver. The mixer hides it.
+An audio device made by software, such as an audio routing app, a conferencing app driver or a user-made aggregate device. The mixer hides it.
 _Avoid_: virtual device
 
 **Turntable**:
-The Audio-Technica LP120's USB codec, which macOS names "USB AUDIO  CODEC".
+The Audio-Technica LP120's USB codec, which macOS names "USB AUDIO  CODEC". macOS shows it as two devices with that name: an input and an output. The turntable is the input.
 
 ### Gain stages
 
 **Device gain**:
-The macOS input volume of a device. It changes the level for every app that records from the device.
+The macOS input volume of a device. It changes the level for every app that records from the device. The turntable has none.
 _Avoid_: input gain
 
 **Trim**:
