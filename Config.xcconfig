@@ -1,0 +1,2 @@
+// Shared build settings. The team ID lives in Local.xcconfig, which Git ignores.
+#include? "Local.xcconfig"
