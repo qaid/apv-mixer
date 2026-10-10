@@ -9,6 +9,6 @@ import SwiftUI
         WindowGroup {
             ContentView(mixer: mixer)
         }
-        .defaultSize(width: 620, height: 680)
+        .windowResizability(.contentSize)
     }
 }

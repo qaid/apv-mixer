@@ -110,3 +110,16 @@ struct PanelDivider: View {
         }
     }
 }
+
+/// A heavier engraved line between the Inputs group and the Apps group.
+struct GroupDivider: View {
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        HStack(spacing: 0) {
+            Rectangle().fill(.black.opacity(scheme == .dark ? 0.9 : 0.4)).frame(width: 3)
+            Rectangle().fill(.white.opacity(scheme == .dark ? 0.1 : 0.8)).frame(width: 1)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 48)   // starts and ends with the thin strip dividers, below the group titles
+    }
+}

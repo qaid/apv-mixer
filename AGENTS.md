@@ -19,6 +19,14 @@ GitHub Issues on `qaid/apv-mixer`. See `docs/agents/issue-tracker.md`.
 
 Single-context: `CONTEXT.md` at the repo root; ADRs go in `docs/adr/` when one is needed.
 
+## Build
+
+Build and install only with `scripts/build.sh`. A build in any other folder (`/tmp`, DerivedData) registers a second copy of the app, and macOS can launch that stale copy instead of the installed one.
+
+## Look
+
+The look target is `docs/design/look.md`, with `docs/design/reference.png`. After a change to view code, run `scripts/snapshot.sh` and look at its PNG files; before the owner's look check, run the `ui-reviewer` agent.
+
 ## Hardware gate
 
 Agents cannot hear audio. A phase (P1 to P4) is done only when the owner passes its acceptance checks on the real turntable. At the end of each phase, run the `phase-check` skill and stop until the owner reports results.
@@ -29,7 +37,7 @@ Code on the audio thread (IOProc, render callbacks) is real-time: it reads param
 
 ## Core Audio names
 
-Process tap APIs are new and thinly documented (spec R5). Check every Core Audio symbol against the SDK headers before you use it: `$(xcrun --show-sdk-path)/System/Library/Frameworks/CoreAudio.framework/Headers/`.
+Process tap APIs are new and thinly documented (spec R5). Check every Core Audio symbol against the SDK headers before you use it: `$(xcrun --show-sdk-path)/System/Library/Frameworks/CoreAudio.framework/Headers/`. For any Apple API newer than your training data, search Apple's documentation through the project's `xcode` MCP server (Xcode must be open).
 
 ## README audience
 

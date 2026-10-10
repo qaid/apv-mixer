@@ -128,10 +128,17 @@ struct EngineDevice: Equatable {
     let id: AudioObjectID
 }
 
+/// A process tap in the engine key. The tap object outlives aggregate rebuilds; the aggregate only references its UID.
+struct EngineTap: Equatable {
+    let uid: String
+    let drift: Bool     // drift compensation on (off for Bluetooth outputs, which crackle with it)
+}
+
 /// What the running aggregate was built from. Rebuild only when it changes.
 struct EngineKey: Equatable {
     let output: EngineDevice
     let members: [EngineDevice]
+    var taps: [EngineTap] = []      // app taps; each fills one slot after the members
 }
 
 /// Owns the private aggregate device and its IOProc (spec D2). Main thread only.
@@ -140,6 +147,9 @@ final class Engine {
     private var procID: AudioDeviceIOProcID?
     private var state: UnsafeMutablePointer<EngineState>?
     private var slotCount = 0
+    /// Name prefixes of the objects this app creates; launch cleanup finds leftovers by them (spec 7.13).
+    static let namePrefix = "Turntable Mixer engine"
+    static let tapNamePrefix = "Turntable Mixer tap"
     /// Member UIDs in slot order for the running aggregate.
     private(set) var runningUIDs: [String] = []
 
@@ -147,12 +157,13 @@ final class Engine {
     static let maxStrips = 16
     private static let bufferFrames: UInt32 = 256
 
-    /// Builds the aggregate for the output plus the members and starts it. `targets[i]` is member i's starting gain.
-    /// Returns an error message, or nil on success. `key.members` must hold at most `maxStrips` devices.
+    /// Builds the aggregate for the output plus the members and taps and starts it. `targets[i]` is slot i's starting gain
+    /// (members first, then taps). Returns an error message, or nil on success. Members plus taps are capped at `maxStrips`.
     func start(key: EngineKey, targets: [Float]) -> String? {
         stop()
         let members = Array(key.members.prefix(Self.maxStrips))
-        guard !members.isEmpty else { return nil }
+        let taps = Array(key.taps.prefix(Self.maxStrips - members.count))
+        guard !members.isEmpty || !taps.isEmpty else { return nil }
 
         // Never hog mode (D6): nothing here sets kAudioDevicePropertyHogMode.
         // A member that is also the output device is not listed twice.
@@ -162,14 +173,20 @@ final class Engine {
             subDevices.append([kAudioSubDeviceUIDKey: m.uid, kAudioSubDeviceDriftCompensationKey: 1,
                                kAudioSubDeviceDriftCompensationQualityKey: kAudioAggregateDriftCompensationMediumQuality])
         }
-        let description: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "Turntable Mixer engine",
+        var description: [String: Any] = [
+            kAudioAggregateDeviceNameKey: Self.namePrefix,
             kAudioAggregateDeviceUIDKey: "io.github.qaid.turntablemixer.engine." + UUID().uuidString,
             kAudioAggregateDeviceIsPrivateKey: 1,
             kAudioAggregateDeviceIsStackedKey: 0,
             kAudioAggregateDeviceMainSubDeviceKey: key.output.uid,
             kAudioAggregateDeviceSubDeviceListKey: subDevices,
         ]
+        // No kAudioAggregateDeviceTapAutoStartKey: the tap starts with the aggregate.
+        if !taps.isEmpty {
+            description[kAudioAggregateDeviceTapListKey] = taps.map {
+                [kAudioSubTapUIDKey: $0.uid, kAudioSubTapDriftCompensationKey: $0.drift ? 1 : 0]
+            }
+        }
         var agg = AudioObjectID(0)
         guard AudioHardwareCreateAggregateDevice(description as CFDictionary, &agg) == noErr else {
             return "Could not create the audio engine."
@@ -177,7 +194,7 @@ final class Engine {
         aggregate = agg
 
         setBufferSize(agg)
-        guard let layout = Self.layout(aggregate: agg, output: key.output, members: members) else {
+        guard let layout = Self.layout(aggregate: agg, output: key.output, members: members, tapCount: taps.count) else {
             destroy()
             return "Could not read the input channels."
         }
@@ -196,11 +213,11 @@ final class Engine {
         }
         let p = UnsafeMutablePointer<EngineState>.allocate(capacity: 1)
         p.initialize(to: EngineState(slots: slots))
-        p.pointee.slotCount = members.count
+        p.pointee.slotCount = members.count + taps.count
         p.pointee.inputBuffers = layout.inputBuffers
         p.pointee.rampSamples = max(Gain.rampSeconds * Float(rate), 1)
         state = p
-        slotCount = members.count
+        slotCount = members.count + taps.count
         runningUIDs = members.map(\.uid)
 
         var id: AudioDeviceIOProcID?
@@ -277,8 +294,9 @@ final class Engine {
 
     /// Finds each member's first two channels in the aggregate's input buffer list.
     /// Aggregate inputs = each sub-device's input streams, in sub-device order: the output first, then the members
-    /// (a member that is the output has no second entry; its buffers start at 0). A nil slot failed the check and is skipped.
-    private static func layout(aggregate: AudioObjectID, output: EngineDevice, members: [EngineDevice])
+    /// (a member that is the output has no second entry; its buffers start at 0), then one interleaved stereo buffer per tap
+    /// (48 kHz, 2 channels, Float32; measured). A nil slot failed the check and is skipped.
+    private static func layout(aggregate: AudioObjectID, output: EngineDevice, members: [EngineDevice], tapCount: Int)
         -> (slots: [(l: Pos, r: Pos)?], inputBuffers: Int)? {
         let outChannels = Audio.inputBufferChannels(output.id)
         var expected = outChannels
@@ -293,6 +311,11 @@ final class Engine {
                 starts.append(expected.count)
                 expected += own
             }
+        }
+        for _ in 0..<tapCount {
+            starts.append(expected.count)
+            owns.append([2])
+            expected.append(2)
         }
         guard Audio.inputBufferChannels(aggregate) == expected else { return nil }
 

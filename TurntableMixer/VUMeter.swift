@@ -3,6 +3,8 @@ import SwiftUI
 /// Backlit analog VU meter. `needleDB` is dBFS with ballistics already applied by the model.
 struct VUMeter: View {
     let needleDB: Float
+    /// Clip light level 0...1 (lit while the strip clips, then fading out).
+    var clip: Float = 0
 
     /// Calibration: 0 VU = this level in dBFS.
     static let vuZeroDBFS: Float = -12
@@ -43,6 +45,7 @@ struct VUMeter: View {
             Needle(angle: needleAngle)
                 .stroke(Color(white: 0.04), lineWidth: 1.2)
                 .animation(.linear(duration: 1.0 / 30), value: needleAngle)
+            clipLight
             LinearGradient(colors: [.white.opacity(0.22), .clear], startPoint: .top, endPoint: .center)
             // Black plate hides the pivot at the bottom edge.
             Rectangle().fill(Color(white: 0.06)).frame(height: 5)
@@ -56,7 +59,29 @@ struct VUMeter: View {
         .shadow(color: Color(red: 1, green: 0.7, blue: 0.3).opacity(0.45), radius: 9)
         .accessibilityElement()
         .accessibilityLabel("Level meter")
-        .accessibilityValue(String(format: "%.0f dBFS", needleDB))
+        .accessibilityValue(String(format: "%.0f dBFS", needleDB) + ", clip light " + (clip > 0 ? "lit" : "off"))
+    }
+
+    /// A small red lens in the upper-left corner, under the glass highlight. Off: dark red, still visible on the cream face.
+    private var clipLight: some View {
+        let level = Double(min(max(clip, 0), 1))
+        let off = (r: 0.42, g: 0.08, b: 0.07), on = (r: 1.0, g: 0.25, b: 0.18)
+        func mix(_ a: Double, _ b: Double) -> Double { a + (b - a) * level }
+        return ZStack(alignment: .leading) {
+            Text("CLIP").font(.custom("Avenir Next Condensed", size: 6.5).weight(.bold)).tracking(0.6)
+                .foregroundStyle(Color(white: 0.06)).offset(x: 11)
+            Circle()
+                .fill(RadialGradient(colors: [Color(red: mix(0.55, 1.0), green: mix(0.15, 0.4), blue: mix(0.12, 0.3)),
+                                              Color(red: mix(off.r, on.r), green: mix(off.g, on.g), blue: mix(off.b, on.b))],
+                                     center: .init(x: 0.4, y: 0.35), startRadius: 0, endRadius: 5))
+                .frame(width: 7, height: 7)
+                .overlay(Circle().stroke(.black.opacity(0.55), lineWidth: 0.75))
+                .shadow(color: .red.opacity(0.9 * level), radius: 4 * level)
+        }
+        .fixedSize()
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.leading, 8).padding(.top, 8)
+        .accessibilityHidden(true)
     }
 
     private func drawScale(_ context: inout GraphicsContext) {
