@@ -31,7 +31,7 @@ Result: P1 done.
 
 ### 2026-10-10, P2
 
-Commit: not committed (tested build: working tree on base `1fc233b`).
+Commit: `d2f7d1e` (tested build: the same code, before the commit).
 
 - AC8: pass
 - AC1: pass
