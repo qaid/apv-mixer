@@ -24,6 +24,7 @@ struct Knob: View {
     private static let scrollPoints: Float = 400
     private static let step: Float = 0.05
 
+    @Environment(\.colorScheme) private var scheme
     @State private var dragStart: Float?
 
     private var diameter: CGFloat { style == .chrome ? 76 : 38 }
@@ -55,7 +56,7 @@ struct Knob: View {
         .background(ScrollCatcher(enabled: enabled) { dy in
             set(Self.clamp(fraction + Float(dy) / Self.scrollPoints))
         })
-        .opacity(enabled ? 1 : 0.35)
+        .opacity(enabled ? 1 : (scheme == .dark ? 0.65 : 0.35))
         .disabled(!enabled)
         .accessibilityElement()
         .accessibilityLabel(label)
@@ -91,7 +92,7 @@ struct Knob: View {
                 Circle().fill(LinearGradient(colors: [Color(white: 0.28), Color(white: 0.04)],
                                              startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: diameter, height: diameter)
-                Circle().stroke(.white.opacity(0.22), lineWidth: 1).frame(width: diameter - 1)
+                Circle().stroke(.white.opacity(scheme == .dark ? 0.55 : 0.22), lineWidth: 1).frame(width: diameter - 1)
                 pointer(color: .white, width: 2)
             }
         }

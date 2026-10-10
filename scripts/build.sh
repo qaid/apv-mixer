@@ -19,3 +19,10 @@ mkdir -p ~/Applications
 rm -rf ~/Applications/"Turntable Mixer.app"
 cp -R "$app" ~/Applications/
 print "OK: installed ~/Applications/Turntable Mixer.app"
+# Launch Services must know only the installed copy, or "Quit & Reopen" can launch a stale build.
+LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+"$LSR" -u "$PWD/$app" || true
+"$LSR" -f ~/Applications/"Turntable Mixer.app"
+"$LSR" -dump | grep -E '^path:.*Turntable Mixer\.app' | sed -E 's/^path: +//; s/ \(0x[0-9a-f]+\)$//' | sort -u | grep -vxF "$HOME/Applications/Turntable Mixer.app" | while read -r p; do
+  print -u2 "WARNING: still registered with Launch Services: $p"
+done || true

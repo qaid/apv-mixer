@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// One input strip, top to bottom: name, Default input, Device gain and Trim, meter, Mute, Level.
+/// One strip, top to bottom: icon, name, Default input, Device gain and Trim, meter, Mute, Level.
+/// An app strip has no Default input and no Device gain.
 struct StripView: View {
     let mixer: Mixer
     let strip: Strip
@@ -12,16 +13,18 @@ struct StripView: View {
 
     var body: some View {
         VStack(spacing: 12) {
+            iconView
             nameView
-            defaultButton
+            if strip.isApp {
+                Color.clear.frame(height: 22)   // keeps the meters level with the input strips
+            } else {
+                defaultButton
+            }
             HStack(spacing: 6) {
-                labelled("Device gain") { deviceGainKnob }
+                if !strip.isApp { labelled("Device gain") { deviceGainKnob } }
                 labelled("Trim") { trimKnob }
             }
-            HStack(alignment: .top, spacing: 8) {
-                VUMeter(needleDB: strip.needleDB)
-                clipLight
-            }
+            VUMeter(needleDB: strip.needleDB, clip: strip.clip)
             muteButton
             labelled("Level") { levelKnob }
             Text(Gain.label(db: strip.db))
@@ -29,14 +32,30 @@ struct StripView: View {
                 .foregroundStyle(Panel.ink(scheme))
             stateLabel
         }
-        .padding(.vertical, 24)
+        .padding(.top, 24).padding(.bottom, 7)
         .padding(.horizontal, 8)
         .frame(width: Self.width)
         .opacity(strip.connected ? 1 : 0.4)
         .disabled(!strip.connected)
     }
 
-    // MARK: Name and state
+    // MARK: Icon, name and state
+
+    /// The app's icon, or the input's transport symbol.
+    @ViewBuilder private var iconView: some View {
+        Group {
+            if let icon = strip.icon {
+                Image(nsImage: icon).resizable().interpolation(.high)
+            } else {
+                Image(systemName: strip.isApp ? "app" : strip.symbol)
+                    .resizable().scaledToFit()
+                    .foregroundStyle(Panel.dimInk(scheme))
+                    .padding(2)
+            }
+        }
+        .frame(width: 22, height: 22)
+        .accessibilityHidden(true)
+    }
 
     @ViewBuilder private var nameView: some View {
         if editing {
@@ -59,6 +78,8 @@ struct StripView: View {
     @ViewBuilder private var stateLabel: some View {
         if !strip.connected {
             Text("Disconnected").engraved(size: 10)
+        } else if let error = strip.error {
+            Text(error).engraved(size: 10).lineLimit(2).multilineTextAlignment(.center)
         } else if strip.noSignal {
             Text("No signal").engraved(size: 10).opacity(0.7)
         } else {
@@ -80,7 +101,7 @@ struct StripView: View {
                     ? LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.55), Color(red: 1, green: 0.68, blue: 0.25)],
                                      startPoint: .top, endPoint: .bottom)
                     : LinearGradient(colors: [Color(white: 0.2), Color(white: 0.08)], startPoint: .top, endPoint: .bottom)))
-                .overlay(Capsule().stroke(.black.opacity(0.6), lineWidth: 1))
+                .overlay(Capsule().stroke(scheme == .dark ? Color(white: 0.5) : .black.opacity(0.6), lineWidth: 1))
                 .shadow(color: lit ? Color.orange.opacity(0.7) : .clear, radius: 6)
         }
         .buttonStyle(.plain)
@@ -99,7 +120,8 @@ struct StripView: View {
                                                center: .init(x: 0.4, y: 0.35), startRadius: 0, endRadius: 16))
                     .frame(width: 26, height: 26)
                     .padding(3)
-                    .overlay(Circle().stroke(Color(red: 0.8, green: 0.1, blue: 0.08), lineWidth: 2.5))
+                    .overlay(Circle().inset(by: 1.5).stroke(LinearGradient(colors: [.white.opacity(scheme == .dark ? 0.85 : 0.55), .black.opacity(0.6)],
+                                                                          startPoint: .top, endPoint: .bottom), lineWidth: 1.5))
                     .shadow(color: lit ? .red.opacity(0.8) : .clear, radius: 8)
             }
             .buttonStyle(.plain)
@@ -109,32 +131,12 @@ struct StripView: View {
         }
     }
 
-    private var clipLight: some View {
-        let lit = strip.clipLit
-        return VStack(spacing: 4) {
-            Button { mixer.clearClip(strip) } label: {
-                Circle()
-                    .fill(RadialGradient(colors: lit ? [Color(red: 1, green: 0.6, blue: 0.5), .red]
-                                                     : [Color(red: 0.4, green: 0.1, blue: 0.1), Color(red: 0.15, green: 0.02, blue: 0.02)],
-                                         center: .init(x: 0.4, y: 0.35), startRadius: 0, endRadius: 8))
-                    .frame(width: 12, height: 12)
-                    .overlay(Circle().stroke(.black.opacity(0.7), lineWidth: 1))
-                    .shadow(color: lit ? .red : .clear, radius: 5)
-            }
-            .buttonStyle(.plain)
-            .help("Clip light. Click to clear.")
-            .accessibilityLabel("Clip light")
-            .accessibilityValue(lit ? "Lit" : "Off")
-            Text("Clip").engraved(size: 8).fixedSize()
-        }
-    }
-
     // MARK: Knobs
 
     private func labelled<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(spacing: 2) {
             content()
-            Text(title).engraved(size: 9).lineLimit(1).minimumScaleFactor(0.8)
+            Text(title).engraved(size: 9).lineLimit(1)
         }
     }
 

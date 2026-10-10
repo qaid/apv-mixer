@@ -48,7 +48,7 @@ _Avoid_: input gain
 A mixer-only gain knob on a strip, -24 to +24 dB.
 
 **Fader**:
-A mixer-only level slider on a strip, -∞ to +10 dB. On the master strip, the fader is the system output volume.
+A mixer-only level control on a strip, -∞ to +10 dB. The UI shows it as the rotary Level knob. On the master strip, the fader is the system output volume.
 
 ### Work
 
