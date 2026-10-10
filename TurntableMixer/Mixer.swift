@@ -63,8 +63,8 @@ import os
     private(set) var apps: [Strip] = []      // by name, ties by bundle ID
     private(set) var micDenied = false
     private(set) var captureMaybeOff = false  // tapped apps report output but the taps are silent (spec 5)
-    private(set) var inputError: String?
     /// The input engine's problem; each app strip carries its own `error`.
+    private(set) var inputError: String?
 
     @ObservationIgnored private let engine = Engine()
     @ObservationIgnored private var started = false
