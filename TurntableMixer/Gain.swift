@@ -37,4 +37,11 @@ nonisolated enum Gain {
     static func label(db: Float) -> String {
         db == -Float.infinity ? "-∞ dB" : String(format: "%+.1f dB", db)
     }
+
+    static let rampSeconds: Float = 0.015   // every gain change takes this long (spec 7.1: 10 to 20 ms)
+
+    /// Gain change per sample so that going from `current` to `target` takes `rampSamples`.
+    static func rampStep(from current: Float, to target: Float, rampSamples: Float) -> Float {
+        abs(target - current) / max(rampSamples, 1)
+    }
 }

@@ -2,36 +2,58 @@ import SwiftUI
 
 struct ContentView: View {
     let mixer: Mixer
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
             if mixer.micDenied {
                 MicrophoneBanner(open: mixer.openMicrophoneSettings)
+                    .padding(.horizontal, 24).padding(.top, 20)
             }
-            if mixer.turntableUID != nil {
-                StripView(mixer: mixer)
+            if mixer.strips.isEmpty {
+                Text("No input devices.")
+                    .engraved(size: 14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                Text("Turntable not found. Power it on.")
-                    .foregroundStyle(.secondary)
+                ScrollView(.horizontal) {
+                    HStack(spacing: 0) {
+                        ForEach(mixer.strips) { strip in
+                            StripView(mixer: mixer, strip: strip)
+                            if strip.id != mixer.strips.last?.id { PanelDivider() }
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .frame(maxHeight: .infinity)
+                }
+            }
+            if let error = mixer.engineError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(Panel.ink(scheme))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24).padding(.bottom, 14)
             }
         }
-        .padding(24)
-        .frame(minWidth: 320, minHeight: 480)
+        .frame(minWidth: 360, minHeight: 640)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(white: 0.08))
-        .preferredColorScheme(.dark)
+        .background(Faceplate())
     }
 }
 
+/// Shown when macOS has denied the Microphone permission.
 struct MicrophoneBanner: View {
     let open: () -> Void
+    @Environment(\.colorScheme) private var scheme
+
     var body: some View {
         HStack {
             Text("Microphone permission is off. Turntable Mixer cannot hear the turntable without it.")
                 .font(.callout)
+                .foregroundStyle(Panel.ink(scheme))
             Button("Open Microphone settings", action: open)
         }
         .padding(10)
-        .background(Color.orange.opacity(0.25), in: RoundedRectangle(cornerRadius: 6))
+        .background(Color.orange.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.black.opacity(0.35), lineWidth: 1))
     }
 }

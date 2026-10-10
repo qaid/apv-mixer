@@ -34,6 +34,11 @@ import Foundation
         assert(Gain.snapped(Gain.detent + 0.05) == Gain.detent + 0.05)
         assert(Gain.snapped(-1) == 0 && Gain.snapped(2) == 1)
 
+        // ramp step: a small and a large change both take the same number of samples
+        assert(near(Gain.rampStep(from: 0, to: 1, rampSamples: 720), 1.0 / 720, 1e-9))
+        assert(near(Gain.rampStep(from: 0.5, to: 0.6, rampSamples: 100), 0.001, 1e-9))
+        assert(Gain.rampStep(from: 1, to: 1, rampSamples: 720) == 0)
+
         assert(Gain.label(db: -Float.infinity) == "-∞ dB")
         assert(Gain.label(db: 0) == "+0.0 dB")
         print("check-gain: all checks passed")
