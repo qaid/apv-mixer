@@ -63,7 +63,7 @@ Result: P2 done.
 
 ### 2026-10-10, P3
 
-Commit: not committed (base `392e25a`).
+Commit: `5d7f68d` (tested build: the same code, before the commit).
 
 Round 1:
 - P0: fail. After the permission was turned on, "Quit & Reopen" launched a stale P1 build: other build folders had registered extra copies of the app. Fixed in `scripts/build.sh`.
