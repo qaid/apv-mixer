@@ -9,7 +9,7 @@ Exact colours and sizes live in the code (`Faceplate.swift`, `Knob.swift`, `VUMe
 - Light appearance: brushed silver. Dark appearance: brushed black. The app follows the system appearance; it never forces one.
 - Fine horizontal brushing, visible but quiet. The brushing does not move on redraw.
 - Screw heads in the corners.
-- Strips are separated by thin engraved lines; the Inputs and Apps groups by a heavier one.
+- Strips are separated by thin engraved lines; the Inputs, Apps and Master groups by a heavier one.
 
 ## Lettering
 
@@ -30,6 +30,18 @@ Exact colours and sizes live in the code (`Faceplate.swift`, `Knob.swift`, `VUMe
 - One backlit analog VU meter per strip: warm cream face, black scale and needle, a soft amber glow around it, like the reference's two meters.
 - The needle rests at the left stop when there is no signal.
 - **Clip light**: a small red light (about 7 pt) in the meter's upper-left corner, behind the glass, with "CLIP" printed beside it. It is not a button. Off: dark red, still visible on the face. Lit while the strip clips, then fades out over about 2.5 s.
+
+## Master
+
+- The last strip, after a heavy divider, titled "Master". Top to bottom: Output menu, "Sound effects through" menu with a one-line note, Balance knob (small, black), one meter with clip light, Mute, Level knob, readout.
+- Menus are native pop-ups under small engraved labels; long device names truncate.
+- The meter, Mute and Level sit level with the other strips' meter, Mute and Level.
+- Level uses the chrome knob with evenly spaced ticks and no 0 dB mark. The readout is a percent ("62 %"). When the mixer applies the volume itself, a small engraved "Software" label sits under the readout.
+- Balance fades when the output has none.
+
+## Status line
+
+- One engraved line across the bottom of the window, centred, with monospaced digits: "48 kHz · 12.4 ms · CPU 3 %". A missing value shows "—".
 
 ## States
 

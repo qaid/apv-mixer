@@ -13,6 +13,14 @@
 - **The clip light stays lit while the strip clips, then fades out over about 2.5 s (§6: "stays lit until clicked").** It sits behind the meter glass, in the upper corner, and is not a button. Reason: the owner's direction after the P3 look check. The master strip's clip light (P4) follows the same rule.
 - **The Mute button has no red ring (P2 styling: red-ring Mute).** Lit, it still glows red. Reason: the owner's direction after the P3 look check.
 - **The "System Audio Recording may be off" banner checks only until tapped audio first arrives.** After any app strip delivers non-zero audio in a session, the banner no longer appears. Reason: a paused app reports output running while silent, which would show the banner falsely; the cost is that permission removed during a session is not detected.
+- **The master strip follows the P2 styling (§6: master fader, stereo meter).** The master level is the chrome rotary knob with a percent readout and no 0 dB detent, because the system volume is a 0 to 1 value with no 0 dB point. One needle meter, like the strips. The needle follows the master volume and mute: it rests when either is at the bottom. For a system volume, the mixer estimates the level with the knob's own curve. The clip light shows the mix before the volume, because the volume cannot fix that clipping. At volume 0 the mixer also silences its mix, because some outputs still play quietly at their lowest volume. Reason: the owner's P4 decisions D1 to D5, and the owner's direction after the P4 check (D6 first put the needle before the volume).
+- **The master meter and the CPU load add up the engines (P3's one engine per app).** The master needle uses the sum of each engine's peak, which can read higher than the true mix. The CPU load is the sum of each engine's share of its buffer period. Reason: each engine runs its own IOProc, and the HAL mixes their outputs.
+- **The software volume (D8) starts at 100 % at each launch and is not saved.** Reason: §3.7 persistence covers strips only.
+- **After the owner moves the master volume, balance or mute, the mixer ignores change notices for that control for 0.3 s, then reads it once (§7.9 says only: ignore a value equal to the last one).** Reason: a drag sends many values, and a late notice for an earlier value would pull the knob back.
+
+## Sound settings left out (spec R8)
+
+These System Settings > Sound controls have no documented public API, so the mixer does not show them: alert sound choice, alert volume, play user interface sound effects, play feedback when volume is changed, play sound on startup.
 
 ## Process tap references (spec R5)
 
@@ -85,3 +93,29 @@ Round 4 (owner's look changes: clip light in the meter glass, clip fade, Mute wi
 
 Result: P3 done.
 
+
+### 2026-10-10, P4
+
+Commit: `3cc4d2f`.
+
+Round 1 (reply sheet):
+- AC1: pass
+- AC2: pass
+- AC3: fail. With the master volume at the bottom, a USB output still plays quietly, and the master needle still moves. Fixed: at volume 0 the mixer silences its mix, and the needle follows the master volume and mute (owner's direction; see Deviations).
+- AC4: pass
+- AC5: pass
+- AC6: pass
+- AC7: pass
+- AC8: pass
+- AC9: pass
+- AC10: pass
+- AC11: fail. The Output and Sound effects menus list no devices. Cause: the "can be default device" flags were read in the global scope, which returns an error; they need the output scope. Fixed.
+- AC12: pass
+- AC13: pass
+- V4: pass
+
+Round 2 (chat):
+- AC3: pass
+- AC11: pass
+
+Result: P4 done.
