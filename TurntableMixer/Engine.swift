@@ -31,6 +31,17 @@ nonisolated struct EngineState: ~Copyable {
     var inputBuffers = 0                // aggregate input buffers the layout needs
     var rampSamples: Float = 1          // 15 ms at the aggregate's rate
 
+    // Master stage (spec 7.1, D8).
+    let masterTarget = Atomic<UInt32>(Float(1).bitPattern)   // linear master gain, Float bit pattern
+    let masterPeak = Atomic<UInt32>(0)      // post-clip sum peak (louder of L/R) since the UI last read it, Float bit pattern
+    let masterClipped = Atomic<UInt32>(0)   // 1 when a summed sample went over full scale before the clip
+    let cpuLoad = Atomic<UInt32>(0)         // IOProc time / buffer period, max since the UI last read it, Float bit pattern
+    // Written by the IOProc only (masterCurrent/Last/Step); periodTicks is written before start.
+    var masterCurrent: Float = 1
+    var masterLast: Float = 1
+    var masterStep: Float = 0
+    var periodTicks: Double = 1         // one buffer period in mach host ticks
+
     init(slots: UnsafeMutablePointer<StripSlot>) { self.slots = slots }
 }
 
@@ -43,6 +54,7 @@ nonisolated func mixerIOProc(_ device: AudioObjectID,
                              _ outTime: UnsafePointer<AudioTimeStamp>,
                              _ client: UnsafeMutableRawPointer?) -> OSStatus {
     guard let client else { return noErr }
+    let t0 = mach_absolute_time()
     let s = client.assumingMemoryBound(to: EngineState.self)
     let outs = UnsafeMutableAudioBufferListPointer(outData)
 
@@ -112,11 +124,34 @@ nonisolated func mixerIOProc(_ device: AudioObjectID,
         if over { slot.pointee.clipped.store(1, ordering: .relaxed) }
     }
 
-    // Hard clip the sum (the master clip light is P4).
-    for f in 0..<outFrames {
-        lDst[f * lDstStride] = min(max(lDst[f * lDstStride], -1), 1)
-        if let rDst { rDst[f * rDstStride + rDstOff] = min(max(rDst[f * rDstStride + rDstOff], -1), 1) }
+    // Master gain on the sum (ramped like the strips), then the hard clip. Clip flag: any sample over full scale before the clip.
+    let mTarget = Float(bitPattern: s.pointee.masterTarget.load(ordering: .relaxed))
+    var mGain = s.pointee.masterCurrent
+    if mTarget != s.pointee.masterLast {
+        s.pointee.masterStep = Gain.rampStep(from: mGain, to: mTarget, rampSamples: rampSamples)
+        s.pointee.masterLast = mTarget
     }
+    let mStep = s.pointee.masterStep
+    var mPeak: Float = 0
+    var mOver = false
+    for f in 0..<outFrames {
+        if mGain < mTarget { mGain = min(mGain + mStep, mTarget) } else if mGain > mTarget { mGain = max(mGain - mStep, mTarget) }
+        let l = lDst[f * lDstStride] * mGain
+        var r = l
+        if let rDst { r = rDst[f * rDstStride + rDstOff] * mGain }
+        if abs(l) > 1 || abs(r) > 1 { mOver = true }
+        let cl = min(max(l, -1), 1), cr = min(max(r, -1), 1)
+        mPeak = max(mPeak, max(abs(cl), abs(cr)))
+        lDst[f * lDstStride] = cl
+        if let rDst { rDst[f * rDstStride + rDstOff] = cr }
+    }
+    s.pointee.masterCurrent = mGain
+    if mPeak.bitPattern > s.pointee.masterPeak.load(ordering: .relaxed) { s.pointee.masterPeak.store(mPeak.bitPattern, ordering: .relaxed) }
+    if mOver { s.pointee.masterClipped.store(1, ordering: .relaxed) }
+
+    // CPU load: time this full pass took, as a share of the buffer period. Early returns above are not measured.
+    let load = Float(Double(mach_absolute_time() &- t0) / s.pointee.periodTicks)
+    if load.bitPattern > s.pointee.cpuLoad.load(ordering: .relaxed) { s.pointee.cpuLoad.store(load.bitPattern, ordering: .relaxed) }
     return noErr
 }
 
@@ -156,10 +191,13 @@ final class Engine {
     /// Most strips the engine mixes (slots are allocated once).
     static let maxStrips = 16
     private static let bufferFrames: UInt32 = 256
+    /// The running aggregate's rate and buffer size; nil when not running.
+    private(set) var sampleRate: Double?
+    private(set) var bufferFrames: UInt32?
 
     /// Builds the aggregate for the output plus the members and taps and starts it. `targets[i]` is slot i's starting gain
-    /// (members first, then taps). Returns an error message, or nil on success. Members plus taps are capped at `maxStrips`.
-    func start(key: EngineKey, targets: [Float]) -> String? {
+    /// (members first, then taps); `master` is the starting master gain. Returns an error message, or nil on success. Members plus taps are capped at `maxStrips`.
+    func start(key: EngineKey, targets: [Float], master: Float = 1) -> String? {
         stop()
         let members = Array(key.members.prefix(Self.maxStrips))
         let taps = Array(key.taps.prefix(Self.maxStrips - members.count))
@@ -200,6 +238,11 @@ final class Engine {
         }
 
         let rate = Audio.value(agg, kAudioDevicePropertyNominalSampleRate, Float64(48000))
+        let frames = Audio.value(agg, kAudioDevicePropertyBufferFrameSize, UInt32(Self.bufferFrames))
+        var tb = mach_timebase_info_data_t()
+        mach_timebase_info(&tb)
+        // Buffer period in host ticks: seconds -> nanoseconds -> ticks (ticks x numer / denom = ns).
+        let period = Double(frames) / max(rate, 1) * 1e9 * Double(tb.denom) / Double(max(tb.numer, 1))
         let slots = UnsafeMutablePointer<StripSlot>.allocate(capacity: Self.maxStrips)
         for i in 0..<Self.maxStrips { (slots + i).initialize(to: StripSlot()) }
         for (i, l) in layout.slots.enumerated() {
@@ -216,6 +259,12 @@ final class Engine {
         p.pointee.slotCount = members.count + taps.count
         p.pointee.inputBuffers = layout.inputBuffers
         p.pointee.rampSamples = max(Gain.rampSeconds * Float(rate), 1)
+        p.pointee.periodTicks = max(period, 1)
+        p.pointee.masterTarget.store(master.bitPattern, ordering: .relaxed)
+        p.pointee.masterCurrent = master
+        p.pointee.masterLast = master
+        sampleRate = rate
+        bufferFrames = frames
         state = p
         slotCount = members.count + taps.count
         runningUIDs = members.map(\.uid)
@@ -242,6 +291,19 @@ final class Engine {
     func setTarget(slot: Int, _ linear: Float) {
         guard let s = state, slot >= 0, slot < slotCount else { return }
         (s.pointee.slots + slot).pointee.target.store(linear.bitPattern, ordering: .relaxed)
+    }
+
+    /// Sets the master gain (linear). The IOProc ramps to it in 15 ms.
+    func setMaster(_ linear: Float) {
+        state?.pointee.masterTarget.store(linear.bitPattern, ordering: .relaxed)
+    }
+
+    /// The sum's post-clip peak, whether it went over full scale, and the IOProc load (share of the buffer period), since the last call.
+    func takeMaster() -> (peak: Float, clipped: Bool, load: Float) {
+        guard let s = state else { return (0, false, 0) }
+        return (Float(bitPattern: s.pointee.masterPeak.exchange(0, ordering: .relaxed)),
+                s.pointee.masterClipped.exchange(0, ordering: .relaxed) != 0,
+                Float(bitPattern: s.pointee.cpuLoad.exchange(0, ordering: .relaxed)))
     }
 
     /// Per member, in slot order: post-gain peak and raw input peak since the last call (resets them), and whether the clip flag was set.
@@ -272,6 +334,8 @@ final class Engine {
             slots.deallocate()
         }
         state = nil
+        sampleRate = nil
+        bufferFrames = nil
         slotCount = 0
         runningUIDs = []
         if aggregate != 0 { AudioHardwareDestroyAggregateDevice(aggregate) }

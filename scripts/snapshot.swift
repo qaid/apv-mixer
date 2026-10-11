@@ -7,8 +7,12 @@ import AppKit
     static func icon(_ path: String) -> NSImage { NSWorkspace.shared.icon(forFile: path) }
 
     static func scenes() -> [(String, Mixer)] {
-        func mixer(_ s: [Strip], _ a: [Strip], denied: Bool = false, off: Bool = false) -> Mixer {
-            let m = Mixer(); m.fixture(strips: s, apps: a, micDenied: denied, captureMaybeOff: off); return m
+        let outputs = [OutputChoice(uid: "spk", name: "MacBook Pro Speakers"), OutputChoice(uid: "usb", name: "USB Audio"),
+                       OutputChoice(uid: "hdmi", name: "HDMI Display")]
+        func mixer(_ s: [Strip], _ a: [Strip], denied: Bool = false, off: Bool = false, master: (Mixer) -> Void = { m in
+            m.fixtureMaster(outputs: outputs, outputUID: "usb", effectsUID: "spk", volume: 0.6, needleDB: -14)
+        }) -> Mixer {
+            let m = Mixer(); m.fixture(strips: s, apps: a, micDenied: denied, captureMaybeOff: off); master(m); return m
         }
         let turntable = Mixer.fixtureStrip(uid: "tt", name: "Turntable", position: 0.7, needleDB: -14, isDefaultInput: false)
         let mic = Mixer.fixtureStrip(uid: "mic", name: "MacBook Pro Microphone", position: 0.3, isDefaultInput: true, deviceGain: 0.6)
@@ -26,7 +30,10 @@ import AppKit
         let broken = Mixer.fixtureStrip(uid: "e", name: "Spotify", isApp: true, position: 0.7, error: "Could not tap Spotify.")
         return [
             ("window", mixer([turntable, mic], [music, safari])),
-            ("states", mixer(states, [broken])),
+            ("states", mixer(states, [broken], master: { m in
+                m.fixtureMaster(outputs: outputs, outputUID: "gone", effectsUID: "hdmi", volume: 1, balance: nil, muted: true,
+                                software: true, needleDB: -3, clip: 1, sampleRate: nil, latencyMs: nil, cpu: 0)
+            })),
             ("banners", mixer([turntable], [], denied: true, off: true)),
             ("single", mixer([turntable], [])),
             ("empty", mixer([], [])),

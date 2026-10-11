@@ -55,9 +55,201 @@ import os
     }
 }
 
+/// One entry in the Output or Sound effects menu.
+struct OutputChoice: Identifiable, Equatable {
+    let uid: String
+    let name: String
+    var id: String { uid }
+}
+
+/// The master strip and the status line (spec §6, D7, D8). The model owns every write; the UI reads. Main thread only.
+@Observable final class Master {
+    fileprivate(set) var outputs: [OutputChoice] = []          // devices macOS allows as the output ('dflt'), minus the mixer's own aggregates; by name
+    fileprivate(set) var effectsOutputs: [OutputChoice] = []   // devices macOS allows for sound effects ('sflt'); by name
+    fileprivate(set) var outputUID: String?                    // the macOS default output
+    fileprivate(set) var effectsUID: String?                   // the macOS sound effects device
+    fileprivate(set) var volume: Float = 1                     // 0...1: the system volume, or the mixer's own volume when `software`
+    fileprivate(set) var balance: Float?                       // 0...1, 0.5 = centre; nil = the output has no balance (knob disabled)
+    fileprivate(set) var muted = false
+    fileprivate(set) var software = false                      // D8: the output has no volume control, so the mixer applies volume (and mute, if the output has none)
+    fileprivate(set) var needleDB: Float = Mixer.needleFloorDB // the mix after the master volume and mute (sum over engines; a system volume is estimated), VU ballistics
+    fileprivate(set) var clip: Float = 0                       // like Strip.clip: any engine's sum went over full scale
+    fileprivate(set) var sampleRate: Double?                   // Hz; nil while no engine runs
+    fileprivate(set) var latencyMs: Double?                    // turntable to speaker estimate; nil while no engine runs
+    fileprivate(set) var cpu: Float = 0                        // 0...1: IOProc time per buffer period, summed over engines, highest of the last 0.5 s
+}
+
 /// Mixer state: one strip per hardware input device and one per app that plays audio. Main thread only.
 @Observable final class Mixer {
     static let shared = Mixer()
+    let master = Master()
+
+    // MARK: Master controls
+
+    private enum MasterControl { case volume, balance, mute }
+
+    /// Makes the device the macOS default output (D7). The default-output listener rebuilds the engines and updates `master`.
+    func setOutput(uid: String) {
+        guard let id = Audio.deviceID(uid: uid) else { return }
+        Audio.setDefaultOutput(id)
+    }
+
+    /// Makes the device the macOS sound effects device. The listener updates `master`.
+    func setEffectsOutput(uid: String) {
+        guard let id = Audio.deviceID(uid: uid) else { return }
+        Audio.setDefaultSystemOutput(id)
+    }
+
+    /// 0...1. The system volume, or the mixer's own volume when `master.software`.
+    func setMasterVolume(_ v: Float) {
+        let v = min(max(v, 0), 1)
+        guard v != master.volume else { return }
+        if master.software {
+            softwareVolume = v
+            master.volume = v
+            pushMasterGain()
+        } else {
+            let out = Audio.defaultOutput()
+            guard out != 0 else { return }
+            Audio.setOutputVolume(out, v)
+            master.volume = v
+            ignoreListener(.volume)
+        }
+    }
+
+    /// 0...1, 0.5 = centre.
+    func setBalance(_ b: Float) {
+        let b = min(max(b, 0), 1)
+        let out = Audio.defaultOutput()
+        guard master.balance != nil, b != master.balance, out != 0 else { return }
+        Audio.setOutputBalance(out, b)
+        master.balance = b
+        ignoreListener(.balance)
+    }
+
+    func toggleMasterMute() {
+        if hasOutputMute {
+            let out = Audio.defaultOutput()
+            guard out != 0 else { return }
+            Audio.setOutputMute(out, !master.muted)
+            master.muted.toggle()
+            ignoreListener(.mute)
+        } else {
+            softMuted.toggle()
+            master.muted = softMuted
+        }
+        pushMasterGain()
+    }
+
+    /// After a user write, listener reads of that control are ignored for 0.3 s (a drag would jerk back), then one read syncs.
+    private func ignoreListener(_ c: MasterControl) {
+        ignoreUntil[c] = Date().addingTimeInterval(Self.syncQuietSeconds)
+        syncTasks[c]?.cancel()
+        syncTasks[c] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.syncQuietSeconds + 0.02))
+            guard !Task.isCancelled, let self else { return }
+            self.ignoreUntil[c] = nil
+            self.syncMaster()
+        }
+        pushMasterGain()
+    }
+
+    private func ignoring(_ c: MasterControl) -> Bool {
+        if let t = ignoreUntil[c] { return Date() < t }
+        return false
+    }
+
+    /// Reads the default output's volume, balance and mute into `master`. Never writes to the device (spec 7.9).
+    private func syncMaster() {
+        let out = Audio.defaultOutput()
+        let vol = out == 0 ? nil : Audio.outputVolume(out)
+        let bal = out == 0 ? nil : Audio.outputBalance(out)
+        let mute = out == 0 ? nil : Audio.outputMute(out)
+
+        let software = vol == nil
+        if master.software != software { master.software = software }
+        hasOutputMute = mute != nil
+        if let vol {
+            if !ignoring(.volume), master.volume != vol { master.volume = vol }
+        } else if master.volume != softwareVolume {
+            master.volume = softwareVolume
+        }
+        if !ignoring(.balance), master.balance != bal { master.balance = bal }
+        if let mute {
+            if !ignoring(.mute), master.muted != mute { master.muted = mute }
+        } else if master.muted != softMuted {
+            master.muted = softMuted
+        }
+        pushMasterGain()
+    }
+
+    /// Sends the master gain to every engine when it changed.
+    private func pushMasterGain() {
+        let g = MasterMath.gain(software: master.software, hasMute: hasOutputMute, volume: master.volume, muted: master.muted)
+        guard g != masterGain else { return }
+        masterGain = g
+        engine.setMaster(g)
+        for s in apps { s.engine?.setMaster(g) }
+    }
+
+    /// Fills the output menus and the selected devices.
+    private func refreshMasterDevices() {
+        let outs = Audio.outputDevices(), effects = Audio.effectsDevices()
+        if master.outputs != outs { master.outputs = outs }
+        if master.effectsOutputs != effects { master.effectsOutputs = effects }
+        func uid(_ id: AudioObjectID) -> String? { id == 0 ? nil : Audio.string(id, kAudioDevicePropertyDeviceUID) }
+        let o = uid(Audio.defaultOutput()), e = uid(Audio.defaultSystemOutput())
+        if master.outputUID != o { master.outputUID = o }
+        if master.effectsUID != e { master.effectsUID = e }
+    }
+
+    /// Keeps the output-control listeners on the current default output, then reads its state.
+    private func watchOutput() {
+        refreshMasterDevices()
+        let out = Audio.defaultOutput()
+        if out != outputWatchID {
+            if let block = outputWatchBlock {
+                for var a in Audio.outputControlAddresses() {
+                    AudioObjectRemovePropertyListenerBlock(outputWatchID, &a, DispatchQueue.main, block)
+                }
+            }
+            outputWatchID = 0
+            outputWatchBlock = nil
+            if out != 0 {
+                let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+                    MainActor.assumeIsolated { self?.syncMaster() }
+                }
+                for var a in Audio.outputControlAddresses() {
+                    AudioObjectAddPropertyListenerBlock(out, &a, DispatchQueue.main, block)
+                }
+                outputWatchID = out
+                outputWatchBlock = block
+            }
+            statusDirty = true
+        }
+        syncMaster()
+    }
+
+    /// Sample rate and latency estimate from the running engines. Called when engines rebuild or the output changes.
+    private func updateStatus() {
+        statusDirty = false
+        let running = ([engine] + apps.compactMap(\.engine)).filter { $0.sampleRate != nil }
+        guard let first = running.first, let rate = first.sampleRate, let frames = first.bufferFrames else {
+            if master.sampleRate != nil { master.sampleRate = nil }
+            if master.latencyMs != nil { master.latencyMs = nil }
+            return
+        }
+        let out = Audio.defaultOutput()
+        var input: UInt32?
+        if engine.sampleRate != nil {
+            let ids = engine.runningUIDs.compactMap { uid in strips.first { $0.uid == uid }?.deviceID }
+            input = ids.map { Audio.latencyFrames($0, scope: kAudioObjectPropertyScopeInput) }.max()
+        }
+        let ms = MasterMath.latencyMs(outputFrames: out == 0 ? 0 : Audio.latencyFrames(out, scope: kAudioObjectPropertyScopeOutput),
+                                      inputFrames: input, bufferFrames: frames, rate: rate)
+        if master.sampleRate != rate { master.sampleRate = rate }
+        if master.latencyMs != ms { master.latencyMs = ms }
+    }
 
     private(set) var strips: [Strip] = []     // by device name, ties by UID: renaming never moves a strip
     private(set) var apps: [Strip] = []      // by name, ties by bundle ID
@@ -67,6 +259,17 @@ import os
     private(set) var inputError: String?
 
     @ObservationIgnored private let engine = Engine()
+    // Master strip state (not observed; `master` carries what the UI reads).
+    @ObservationIgnored private var outputWatchID = AudioObjectID(0)     // device the output-control listeners sit on
+    @ObservationIgnored private var outputWatchBlock: AudioObjectPropertyListenerBlock?
+    @ObservationIgnored private var ignoreUntil: [MasterControl: Date] = [:]
+    @ObservationIgnored private var syncTasks: [MasterControl: Task<Void, Never>] = [:]
+    @ObservationIgnored private var softwareVolume: Float = 1            // the mixer's own volume (D8); starts at 1 each launch
+    @ObservationIgnored private var softMuted = false                    // the mixer's own mute, for outputs with no mute
+    @ObservationIgnored private var hasOutputMute = false
+    @ObservationIgnored private var masterGain: Float = 1                // linear gain pushed to every engine
+    @ObservationIgnored private var statusDirty = true
+    @ObservationIgnored private var cpuHold = PeakHold()
     @ObservationIgnored private var started = false
     @ObservationIgnored private var runningKey: EngineKey?
     @ObservationIgnored private var lastTick = Date()
@@ -83,6 +286,7 @@ import os
     private static let appsKey = "apps"
     private static let silentTapSeconds = 2.0         // IsRunningOutput but only zeros for this long: capture may be off
     static let needleFloorDB: Float = -60
+    private static let syncQuietSeconds = 0.3         // after a master write, listener reads of that control are ignored
     private static let needleSeconds: Float = 0.3     // VU ballistics time constant
     private static let leaveDelay = 1.0               // seconds at 0 before a strip leaves the engine
     // Raw input below this for `noSignalSeconds` means the source is off (measured: off peaks about -78 dBFS, on with needle up peaks above -72 dBFS). Calibration knob.
@@ -100,7 +304,8 @@ import os
         }
 
         listen(kAudioHardwarePropertyDevices) { $0.refresh() }
-        listen(kAudioHardwarePropertyDefaultOutputDevice) { $0.reconcile(); $0.reconcileApps() }   // plugging in headphones moves playback (AC11)
+        listen(kAudioHardwarePropertyDefaultOutputDevice) { $0.watchOutput(); $0.reconcile(); $0.reconcileApps() }   // plugging in headphones moves playback (AC11)
+        listen(kAudioHardwarePropertyDefaultSystemOutputDevice) { $0.refreshMasterDevices() }
         listen(kAudioHardwarePropertyProcessObjectList) { $0.refreshApps() }
         listen(kAudioHardwarePropertyDefaultInputDevice) { $0.updateDefaultInput() }
 
@@ -117,6 +322,7 @@ import os
         Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
+        watchOutput()
         refresh()
         refreshApps()
         if UserDefaults.standard.bool(forKey: "selfCheckLog") {   // opt-in: scripts/self-check.sh
@@ -129,6 +335,7 @@ import os
                             log.notice("\(kind, privacy: .public) name=\(s.displayName, privacy: .public) needleDB=\(s.needleDB, format: .fixed(precision: 1), privacy: .public) muted=\(s.muted, privacy: .public) noSignal=\(s.noSignal, privacy: .public) error=\(s.error ?? "none", privacy: .public)")
                         }
                     }
+                    log.notice("master volume=\(self.master.volume, format: .fixed(precision: 2), privacy: .public) muted=\(self.master.muted, privacy: .public) software=\(self.master.software, privacy: .public) needleDB=\(self.master.needleDB, format: .fixed(precision: 1), privacy: .public)")
                     log.notice("captureMaybeOff=\(self.captureMaybeOff, privacy: .public)")
                 }
             }
@@ -179,6 +386,7 @@ import os
 
         for strip in list { watchVolume(strip) }
         updateDefaultInput()
+        refreshMasterDevices()
         reconcile()
         reconcileApps()   // a USB hub reset can change the output's numeric ID
     }
@@ -194,6 +402,7 @@ import os
                             members: members.map { EngineDevice(uid: $0.uid, id: $0.deviceID) })
         }
         guard force || key != runningKey else { return }
+        statusDirty = true
         // Set before starting: creating our own aggregate fires a device list change, which comes back here.
         runningKey = key
 
@@ -204,7 +413,7 @@ import os
             inputError = members.isEmpty ? nil : "No output device."
             return
         }
-        inputError = engine.start(key: key, targets: members.map(target))
+        inputError = engine.start(key: key, targets: members.map(target), master: masterGain)
         if inputError == nil {
             for (i, strip) in members.enumerated() { strip.slot = i }
         }
@@ -353,10 +562,33 @@ import os
             else if !s.running || p == nil { s.lastTapAudio = now }
             if now.timeIntervalSince(s.lastTapAudio) > Self.silentTapSeconds { silent = true }
         }
+        meterMaster(alpha, dt, now)
+        if statusDirty { updateStatus() }
+
         // ponytail: one app tapped successfully proves the permission, so a paused app's zeros no longer raise the banner.
         if live { captureConfirmed = true }
         let off = silent && !live && !captureConfirmed
         if captureMaybeOff != off { captureMaybeOff = off }
+    }
+
+    /// The master needle (sum of the engines' linear peaks, after the master volume and mute), clip light (before them) and CPU load.
+    private func meterMaster(_ alpha: Float, _ dt: Float, _ now: Date) {
+        var peak: Float = 0, clipped = false, load: Float = 0
+        for e in [engine] + apps.compactMap(\.engine) {
+            let m = e.takeMaster()
+            peak += m.peak; clipped = clipped || m.clipped; load += m.load
+        }
+        peak *= MasterMath.meterFactor(software: master.software, volume: master.volume, muted: master.muted)
+        let level = peak > 0 ? max(20 * log10(peak), Self.needleFloorDB) : Self.needleFloorDB
+        var needle = master.needleDB + alpha * (level - master.needleDB)
+        if needle < Self.needleFloorDB + 0.1 { needle = Self.needleFloorDB }
+        if abs(needle - master.needleDB) > 0.01 || needle == Self.needleFloorDB && master.needleDB != needle { master.needleDB = needle }
+
+        let clip = ClipFade.next(current: master.clip, clipped: clipped, dt: dt)
+        if clip != master.clip, clip == 0 || clip == 1 || abs(clip - master.clip) > 0.01 { master.clip = clip }
+
+        let cpu = cpuHold.add(load, at: now.timeIntervalSinceReferenceDate)
+        if abs(cpu - master.cpu) > 0.005 || cpu == 0 && master.cpu != 0 { master.cpu = cpu }
     }
 
     /// Moves one strip's needle, "No signal" (input strips) and clip light from the latest peaks. nil = not in an engine.
@@ -508,6 +740,7 @@ import os
                             taps: [EngineTap(uid: tapUID, drift: !Audio.isBluetooth(out))])
         }
         guard force || key != s.engineKey else { return }
+        statusDirty = true
         s.engineKey = key   // set before starting: our own aggregate fires a device list change
         s.slot = nil
         guard let key else {
@@ -515,7 +748,7 @@ import os
             if s.tapID != 0 { s.error = "No output device." }
             return
         }
-        s.error = engine.start(key: key, targets: [target(s)])
+        s.error = engine.start(key: key, targets: [target(s)], master: masterGain)
         if s.error == nil { s.slot = 0 }
     }
 
@@ -559,5 +792,14 @@ extension Mixer {
 
     func fixture(strips: [Strip], apps: [Strip], micDenied: Bool = false, captureMaybeOff: Bool = false) {
         self.strips = strips; self.apps = apps; self.micDenied = micDenied; self.captureMaybeOff = captureMaybeOff
+    }
+
+    func fixtureMaster(outputs: [OutputChoice], outputUID: String?, effectsUID: String?, volume: Float = 0.5, balance: Float? = 0.5,
+                       muted: Bool = false, software: Bool = false, needleDB: Float = Mixer.needleFloorDB, clip: Float = 0,
+                       sampleRate: Double? = 48000, latencyMs: Double? = 12.4, cpu: Float = 0.03) {
+        let m = master
+        m.outputs = outputs; m.effectsOutputs = outputs; m.outputUID = outputUID; m.effectsUID = effectsUID
+        m.volume = volume; m.balance = balance; m.muted = muted; m.software = software; m.needleDB = needleDB; m.clip = clip
+        m.sampleRate = sampleRate; m.latencyMs = latencyMs; m.cpu = cpu
     }
 }

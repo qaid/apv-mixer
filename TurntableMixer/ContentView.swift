@@ -5,8 +5,8 @@ struct ContentView: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        // The 2-strip floor keeps banners, the error line and the empty message readable; a lone strip fits tightly.
-        let wordy = mixer.micDenied || mixer.captureMaybeOff || mixer.inputError != nil || (mixer.strips.isEmpty && mixer.apps.isEmpty)
+        // The 2-strip floor keeps banners and the error line readable; a lone strip fits tightly.
+        let wordy = mixer.micDenied || mixer.captureMaybeOff || mixer.inputError != nil
         FitColumn(minWidth: wordy ? 2 * StripView.width : 0) {
             if mixer.micDenied {
                 PermissionBanner(text: "Microphone permission is off. Turntable Mixer cannot hear the turntable without it.",
@@ -20,20 +20,13 @@ struct ContentView: View {
                     .padding(.horizontal, 36).padding(.top, mixer.micDenied ? 20 : 36)
                     .wrapsToColumn()
             }
-            if mixer.strips.isEmpty && mixer.apps.isEmpty {
-                Text("No input devices.")
-                    .engraved(size: 14)
-                    .padding(.vertical, 56)
-                    .frame(maxWidth: .infinity)
-            } else {
-                // The row reports its natural size, so the window fits the strips. On a screen too small for it, the
-                // scroll view takes over, capped at the screen's visible frame (less room for the title bar and banners).
-                ViewThatFits(in: [.horizontal, .vertical]) {
-                    strips
-                    ScrollView([.horizontal, .vertical]) { strips }
-                }
-                .frame(maxWidth: screen.width, maxHeight: screen.height - 40 - extraHeight)
+            // The row reports its natural size, so the window fits the strips. On a screen too small for it, the
+            // scroll view takes over, capped at the screen's visible frame (less room for the title bar and banners).
+            ViewThatFits(in: [.horizontal, .vertical]) {
+                strips
+                ScrollView([.horizontal, .vertical]) { strips }
             }
+            .frame(maxWidth: screen.width, maxHeight: screen.height - 40 - extraHeight)
             if let error = mixer.inputError {
                 Text(error)
                     .font(.caption)
@@ -42,6 +35,9 @@ struct ContentView: View {
                     .padding(.horizontal, 24).padding(.bottom, 14)
                     .wrapsToColumn()
             }
+            StatusLine(master: mixer.master)
+                .padding(.bottom, 20)   // clears the corner screws
+                .wrapsToColumn()
         }
         .background(Faceplate())
     }
@@ -51,6 +47,11 @@ struct ContentView: View {
             if !mixer.strips.isEmpty { StripGroup(mixer: mixer, title: "Inputs", strips: mixer.strips) }
             if !mixer.strips.isEmpty && !mixer.apps.isEmpty { GroupDivider() }
             if !mixer.apps.isEmpty { StripGroup(mixer: mixer, title: "Apps", strips: mixer.apps) }
+            if !mixer.strips.isEmpty || !mixer.apps.isEmpty { GroupDivider() }
+            VStack(spacing: 0) {
+                Text("Master").engraved(size: 11).padding(.top, 33)
+                MasterStripView(mixer: mixer)
+            }
         }
         // Edge padding is tuned to the visible ink (the meters, with nothing sticking out), about 36 pt on both sides.
         // The bottom keeps a state label ("No signal") and the divider ends clear of the window edge.
@@ -62,7 +63,7 @@ struct ContentView: View {
 
     /// Rough height of the banners and error text, kept out of the strip area's cap.
     private var extraHeight: CGFloat {
-        (mixer.micDenied ? 80 : 0) + (mixer.captureMaybeOff ? 80 : 0) + (mixer.inputError == nil ? 0 : 50)
+        (mixer.micDenied ? 80 : 0) + (mixer.captureMaybeOff ? 80 : 0) + (mixer.inputError == nil ? 0 : 50) + 30
     }
 }
 
