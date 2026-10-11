@@ -34,7 +34,7 @@ nonisolated struct EngineState: ~Copyable {
     // Master stage (spec 7.1, D8).
     let masterTarget = Atomic<UInt32>(Float(1).bitPattern)   // linear master gain, Float bit pattern
     let masterPeak = Atomic<UInt32>(0)      // post-clip sum peak (louder of L/R) since the UI last read it, Float bit pattern
-    let masterClipped = Atomic<UInt32>(0)   // 1 when a summed sample went over full scale before the clip
+    let masterClipped = Atomic<UInt32>(0)   // 1 when a summed sample went over full scale before the master gain
     let cpuLoad = Atomic<UInt32>(0)         // IOProc time / buffer period, max since the UI last read it, Float bit pattern
     // Written by the IOProc only (masterCurrent/Last/Step); periodTicks is written before start.
     var masterCurrent: Float = 1
@@ -124,7 +124,8 @@ nonisolated func mixerIOProc(_ device: AudioObjectID,
         if over { slot.pointee.clipped.store(1, ordering: .relaxed) }
     }
 
-    // Master gain on the sum (ramped like the strips), then the hard clip. Clip flag: any sample over full scale before the clip.
+    // Master gain on the sum (ramped like the strips), then the hard clip. Clip flag: any summed sample over full scale
+    // before the master gain, so a software volume or mute cannot hide a clipping mix.
     let mTarget = Float(bitPattern: s.pointee.masterTarget.load(ordering: .relaxed))
     var mGain = s.pointee.masterCurrent
     if mTarget != s.pointee.masterLast {
@@ -136,10 +137,11 @@ nonisolated func mixerIOProc(_ device: AudioObjectID,
     var mOver = false
     for f in 0..<outFrames {
         if mGain < mTarget { mGain = min(mGain + mStep, mTarget) } else if mGain > mTarget { mGain = max(mGain - mStep, mTarget) }
-        let l = lDst[f * lDstStride] * mGain
-        var r = l
-        if let rDst { r = rDst[f * rDstStride + rDstOff] * mGain }
-        if abs(l) > 1 || abs(r) > 1 { mOver = true }
+        let rawL = lDst[f * lDstStride]
+        var rawR = rawL
+        if let rDst { rawR = rDst[f * rDstStride + rDstOff] }
+        if abs(rawL) > 1 || abs(rawR) > 1 { mOver = true }
+        let l = rawL * mGain, r = rawR * mGain
         let cl = min(max(l, -1), 1), cr = min(max(r, -1), 1)
         mPeak = max(mPeak, max(abs(cl), abs(cr)))
         lDst[f * lDstStride] = cl

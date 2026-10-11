@@ -96,7 +96,7 @@ Result: P3 done.
 
 ### 2026-10-10, P4
 
-Commit: not committed (base `04c0773`).
+Commit: `3cc4d2f`.
 
 Round 1 (reply sheet):
 - AC1: pass
