@@ -23,6 +23,8 @@ Single-context: `CONTEXT.md` at the repo root; ADRs go in `docs/adr/` when one i
 
 Build and install only with `scripts/build.sh`. A build in any other folder (`/tmp`, DerivedData) registers a second copy of the app, and macOS can launch that stale copy instead of the installed one.
 
+Run each `scripts/check-*.swift` with the `// Run:` command on its first line. A check passes only when it prints `<name>: ok`.
+
 ## Look
 
 The look target is `docs/design/look.md`, with `docs/design/reference.png`. After a change to view code, run `scripts/snapshot.sh` and look at its PNG files; before the owner's look check, run the `ui-reviewer` agent.
@@ -38,6 +40,8 @@ Code on the audio thread (IOProc, render callbacks) is real-time: it reads param
 ## Core Audio names
 
 Process tap APIs are new and thinly documented (spec R5). Check every Core Audio symbol against the SDK headers before you use it: `$(xcrun --show-sdk-path)/System/Library/Frameworks/CoreAudio.framework/Headers/`. For any Apple API newer than your training data, search Apple's documentation through the project's `xcode` MCP server (Xcode must be open).
+
+Read a device property in the scope its header names: output or input for `CanBeDefaultDevice`, `CanBeDefaultSystemDevice`, volume and mute. The global scope fails with 'who?' (2003332927).
 
 ## README audience
 

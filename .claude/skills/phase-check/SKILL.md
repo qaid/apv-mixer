@@ -6,10 +6,11 @@ description: Hand the owner a phase's acceptance checks to run on the real turnt
 Agents cannot hear audio, so only the owner can pass a phase. This skill is the **hardware gate**: build, hand over, stop, record.
 
 1. **Name the phase.** Read its row in spec §9 (`docs/spec.md`) and every acceptance check (AC) that row lists in §10. Done when you hold the full AC list for the phase.
-2. **Build.** Run `scripts/build.sh`. Done when it exits 0; a failed build goes back to the build work, not to the owner. When a check in this phase needs a first launch or a permission prompt (AC8), the owner's launch is that check, so hand the build over unlaunched. When the phase's work is uncommitted, ask the owner for a commit before step 6; without one, record the base commit and "not committed".
+2. **Build.** Run `scripts/build.sh`. Done when it exits 0; a failed build goes back to the build work, not to the owner. When a check in this phase needs a first launch or a permission prompt (AC8), the owner's launch is that check, so hand the build over unlaunched. When the phase's work is uncommitted, ask the owner for a commit before step 6; without one, record the base commit and "not committed", and after the owner's commit replace that line with its hash in a follow-up commit on the same branch.
 3. **Pre-check.** Catch what an agent can catch before the owner spends a round on it:
    - If the phase changed view code, run the `ui-reviewer` agent and fix its findings.
    - If the phase has app strips, ask the owner whether a quiet test tone may play now; on yes, run `scripts/self-check.sh` and fix a FAIL.
+   - If the phase reads a Core Audio property for the first time, probe it on this Mac. Clean means it returns a value for the owner's devices and every list the UI shows (menus, strips) is non-empty.
    Done when each check that applies is clean.
 4. **Hand over.** Give the owner, in plain language:
    - how to launch this build;
