@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// One strip, top to bottom: icon, name, Default input, Device gain and Trim, meter, Mute, Level.
-/// An app strip has no Default input and no Device gain.
+/// One strip, top to bottom: icon, name, Default input, Device gain and Trim, Bass and Treble, meter, Mute, Level.
+/// An app strip has no Default input, no Device gain and no Bass and Treble.
 struct StripView: View {
     let mixer: Mixer
     let strip: Strip
@@ -24,6 +24,13 @@ struct StripView: View {
                 if !strip.isApp { labelled("Device gain") { deviceGainKnob } }
                 labelled("Trim") { trimKnob }
             }
+            HStack(spacing: 6) {
+                labelled("Bass") { eqKnob("Bass", strip.bassDB) { mixer.setBass(strip, $0) } }
+                labelled("Treble") { eqKnob("Treble", strip.trebleDB) { mixer.setTreble(strip, $0) } }
+            }
+            .opacity(strip.isApp ? 0 : 1)   // hidden on app strips; keeps the meters level with the input strips
+            .disabled(strip.isApp)
+            .accessibilityHidden(strip.isApp)
             VUMeter(needleDB: strip.needleDB, clip: strip.clip)
             muteButton
             labelled("Level") { levelKnob }
@@ -152,6 +159,14 @@ struct StripView: View {
              label: "Trim", valueText: String(format: "%+.1f dB", strip.trimDB),
              set: { mixer.setTrim(strip, $0 * 48 - 24) },
              reset: { mixer.setTrim(strip, 0) })
+    }
+
+    private func eqKnob(_ label: String, _ db: Float, _ set: @escaping (Float) -> Void) -> some View {
+        let r = EQ.rangeDB
+        return Knob(style: .small, fraction: (db + r) / (2 * r),
+                    label: label, valueText: String(format: "%+.1f dB", db),
+                    set: { set($0 * 2 * r - r) },
+                    reset: { set(0) })
     }
 
     private var levelKnob: some View {
