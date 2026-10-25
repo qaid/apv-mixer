@@ -25,6 +25,8 @@ Build and install only with `scripts/build.sh`. A build in any other folder (`/t
 
 Run each `scripts/check-*.swift` with the `// Run:` command on its first line. A check passes only when it prints `<name>: ok`.
 
+Put a new check's code inside `@main struct Check<Name> { static func main() { … } }`. `swiftc` compiles the check with app files, and it rejects top-level code then.
+
 ## Look
 
 The look target is `docs/design/look.md`, with `docs/design/reference.png`. After a change to view code, run `scripts/snapshot.sh` and look at its PNG files; before the owner's look check, run the `ui-reviewer` agent.
