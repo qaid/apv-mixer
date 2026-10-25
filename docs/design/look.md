@@ -34,6 +34,7 @@ Exact colours and sizes live in the code (`Faceplate.swift`, `Knob.swift`, `VUMe
 ## Master
 
 - The last strip, after a heavy divider, titled "Master". Top to bottom: Output menu, "Sound effects through" menu with a one-line note, Balance knob (small, black), one meter with clip light, Mute, Level knob, readout.
+- When a row is added above the meter on a strip, raise `MasterStripView.topHeight` by the same height, and give app strips a `Color.clear` spacer of that height (not a hidden control: a hidden `Knob` still takes scroll input).
 - Menus are native pop-ups under small engraved labels; long device names truncate.
 - The meter, Mute and Level sit level with the other strips' meter, Mute and Level.
 - Level uses the chrome knob with evenly spaced ticks and no 0 dB mark. The readout is a percent ("62 %"). When the mixer applies the volume itself, a small engraved "Software" label sits under the readout.
