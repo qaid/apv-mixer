@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// One strip, top to bottom: icon, name, Default input, Device gain and Trim, meter, Mute, Level.
-/// An app strip has no Default input and no Device gain.
+/// One strip, top to bottom: icon, name, Default input, Device gain and Trim, Bass and Treble, meter, Mute, Level.
+/// An app strip has no Default input, no Device gain and no Bass and Treble.
 struct StripView: View {
     let mixer: Mixer
     let strip: Strip
@@ -10,6 +10,7 @@ struct StripView: View {
     @State private var draft = ""
 
     static let width: CGFloat = 176
+    private static let smallColumn: CGFloat = 70   // one column width, so Bass and Treble sit under Device gain and Trim
 
     var body: some View {
         VStack(spacing: 12) {
@@ -21,8 +22,16 @@ struct StripView: View {
                 defaultButton
             }
             HStack(spacing: 6) {
-                if !strip.isApp { labelled("Device gain") { deviceGainKnob } }
-                labelled("Trim") { trimKnob }
+                if !strip.isApp { labelled("Device gain", width: Self.smallColumn) { deviceGainKnob } }
+                labelled("Trim", width: Self.smallColumn) { trimKnob }
+            }
+            if strip.isApp {
+                Color.clear.frame(height: 58)   // the Bass and Treble row's height; keeps the meters level with the input strips
+            } else {
+                HStack(spacing: 6) {
+                    labelled("Bass", width: Self.smallColumn) { eqKnob("Bass", strip.bassDB) { mixer.setBass(strip, $0) } }
+                    labelled("Treble", width: Self.smallColumn) { eqKnob("Treble", strip.trebleDB) { mixer.setTreble(strip, $0) } }
+                }
             }
             VUMeter(needleDB: strip.needleDB, clip: strip.clip)
             muteButton
@@ -133,11 +142,12 @@ struct StripView: View {
 
     // MARK: Knobs
 
-    private func labelled<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
+    private func labelled<Content: View>(_ title: String, width: CGFloat? = nil, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(spacing: 2) {
             content()
             Text(title).engraved(size: 9).lineLimit(1)
         }
+        .frame(width: width)
     }
 
     private var deviceGainKnob: some View {
@@ -152,6 +162,14 @@ struct StripView: View {
              label: "Trim", valueText: String(format: "%+.1f dB", strip.trimDB),
              set: { mixer.setTrim(strip, $0 * 48 - 24) },
              reset: { mixer.setTrim(strip, 0) })
+    }
+
+    private func eqKnob(_ label: String, _ db: Float, _ set: @escaping (Float) -> Void) -> some View {
+        let r = EQ.rangeDB
+        return Knob(style: .small, fraction: (db + r) / (2 * r),
+                    label: label, valueText: String(format: "%+.1f dB", db),
+                    set: { set($0 * 2 * r - r) },
+                    reset: { set(0) })
     }
 
     private var levelKnob: some View {

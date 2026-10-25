@@ -50,6 +50,10 @@ A mixer-only gain knob on a strip, -24 to +24 dB.
 **Fader**:
 A mixer-only level control on a strip, -∞ to +10 dB. The UI shows it as the rotary Level knob. On the master strip, the fader is the system output volume.
 
+**Bass** and **Treble**:
+Mixer-only tone knobs on an input strip, -12 to +12 dB each. Bass is a low shelf at 100 Hz; Treble is a high shelf at 8 kHz. They act before Trim and the fader.
+_Avoid_: EQ, tone (in UI copy)
+
 ### Work
 
 **Phase**:

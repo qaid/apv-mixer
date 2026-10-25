@@ -8,8 +8,8 @@ struct MasterStripView: View {
 
     private var master: Master { mixer.master }
 
-    /// Height of everything above the meter. Equals a strip's icon, name, Default button and small knobs, so the meters line up.
-    private static let topHeight: CGFloat = 160
+    /// Height of everything above the meter. Equals a strip's icon, name, Default button and two rows of small knobs, so the meters line up.
+    private static let topHeight: CGFloat = 230
 
     var body: some View {
         VStack(spacing: 12) {

@@ -14,6 +14,8 @@ import os
     fileprivate(set) var connected = true             // false: the device went away this session
     fileprivate(set) var position: Float = 0          // level knob 0...1 in Gain's position scale; 0 = silent (D4)
     fileprivate(set) var trimDB: Float = 0            // -24...+24
+    fileprivate(set) var bassDB: Float = 0            // -12...+12 (EQ.rangeDB), input strips only
+    fileprivate(set) var trebleDB: Float = 0          // -12...+12 (EQ.rangeDB), input strips only
     fileprivate(set) var muted = false
     fileprivate(set) var needleDB: Float = Mixer.needleFloorDB   // post-gain level, VU ballistics applied
     fileprivate(set) var clip: Float = 0              // clip light 0...1: full while clipping, fades out over ClipFade.seconds
@@ -49,6 +51,8 @@ import os
         self.deviceName = deviceName
         savedName = saved?["name"] as? String
         trimDB = Float(min(max(saved?["trim"] as? Double ?? 0, -24), 24))
+        bassDB = EQ.clamped(Float(saved?["bass"] as? Double ?? 0))
+        trebleDB = EQ.clamped(Float(saved?["treble"] as? Double ?? 0))
         // D4: new devices start silent, new apps at 0 dB.
         position = Float(min(max(saved?["fader"] as? Double ?? Double(isApp ? Gain.detent : 0), 0), 1))
         muted = saved?["mute"] as? Bool ?? false
@@ -413,7 +417,8 @@ struct OutputChoice: Identifiable, Equatable {
             inputError = members.isEmpty ? nil : "No output device."
             return
         }
-        inputError = engine.start(key: key, targets: members.map(target), master: masterGain)
+        inputError = engine.start(key: key, targets: members.map(target), eq: members.map { ($0.bassDB, $0.trebleDB) },
+                                  master: masterGain)
         if inputError == nil {
             for (i, strip) in members.enumerated() { strip.slot = i }
         }
@@ -431,6 +436,8 @@ struct OutputChoice: Identifiable, Equatable {
         var entry = (s.isApp ? savedApps[s.uid] : saved[s.uid]) ?? [:]
         if let name = s.savedName { entry["name"] = name } else { entry["name"] = nil }
         entry["trim"] = Double(s.trimDB)
+        entry["bass"] = Double(s.bassDB)
+        entry["treble"] = Double(s.trebleDB)
         entry["fader"] = Double(s.position)
         entry["mute"] = s.muted
         if s.isApp {
@@ -473,6 +480,26 @@ struct OutputChoice: Identifiable, Equatable {
         s.trimDB = v
         persist(s)
         pushGain(s)
+    }
+
+    func setBass(_ s: Strip, _ db: Float) {
+        let v = EQ.clamped(db)
+        guard v != s.bassDB else { return }
+        s.bassDB = v
+        persist(s)
+        pushEQ(s)
+    }
+
+    func setTreble(_ s: Strip, _ db: Float) {
+        let v = EQ.clamped(db)
+        guard v != s.trebleDB else { return }
+        s.trebleDB = v
+        persist(s)
+        pushEQ(s)
+    }
+
+    private func pushEQ(_ s: Strip) {
+        if let slot = s.slot { (s.engine ?? engine).setEQ(slot: slot, bass: s.bassDB, treble: s.trebleDB) }
     }
 
     func toggleMute(_ s: Strip) {
@@ -780,11 +807,11 @@ struct OutputChoice: Identifiable, Equatable {
 // Snapshot fixtures only (scripts/snapshot.swift).
 extension Mixer {
     static func fixtureStrip(uid: String, name: String, isApp: Bool = false, connected: Bool = true, position: Float = 0.5,
-                             trimDB: Float = 0, muted: Bool = false, needleDB: Float = Mixer.needleFloorDB, clip: Float = 0,
+                             trimDB: Float = 0, bassDB: Float = 0, trebleDB: Float = 0, muted: Bool = false, needleDB: Float = Mixer.needleFloorDB, clip: Float = 0,
                              noSignal: Bool = false, isDefaultInput: Bool = false, deviceGain: Float? = nil,
                              icon: NSImage? = nil, error: String? = nil) -> Strip {
         let s = Strip(uid: uid, deviceName: name, saved: nil, isApp: isApp)
-        s.connected = connected; s.position = position; s.trimDB = trimDB; s.muted = muted; s.needleDB = needleDB
+        s.connected = connected; s.position = position; s.trimDB = trimDB; s.bassDB = bassDB; s.trebleDB = trebleDB; s.muted = muted; s.needleDB = needleDB
         s.clip = clip; s.noSignal = noSignal; s.isDefaultInput = isDefaultInput; s.deviceGain = deviceGain
         s.icon = icon; s.error = error
         return s

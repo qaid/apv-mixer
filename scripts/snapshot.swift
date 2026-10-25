@@ -14,7 +14,7 @@ import AppKit
         }) -> Mixer {
             let m = Mixer(); m.fixture(strips: s, apps: a, micDenied: denied, captureMaybeOff: off); master(m); return m
         }
-        let turntable = Mixer.fixtureStrip(uid: "tt", name: "Turntable", position: 0.7, needleDB: -14, isDefaultInput: false)
+        let turntable = Mixer.fixtureStrip(uid: "tt", name: "Turntable", position: 0.7, bassDB: 4, trebleDB: -3, needleDB: -14, isDefaultInput: false)
         let mic = Mixer.fixtureStrip(uid: "mic", name: "MacBook Pro Microphone", position: 0.3, isDefaultInput: true, deviceGain: 0.6)
         let music = Mixer.fixtureStrip(uid: "com.apple.Music", name: "Music", isApp: true, position: 0.7, muted: true, needleDB: -20,
                           icon: icon("/System/Applications/Music.app"))
