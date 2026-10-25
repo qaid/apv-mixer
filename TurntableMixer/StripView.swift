@@ -145,6 +145,7 @@ struct StripView: View {
             content()
             Text(title).engraved(size: 9).lineLimit(1)
         }
+        .frame(width: 70)   // one column width, so Bass and Treble sit under Device gain and Trim
     }
 
     private var deviceGainKnob: some View {
