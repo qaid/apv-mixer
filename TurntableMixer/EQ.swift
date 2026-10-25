@@ -26,6 +26,9 @@ nonisolated enum EQ {
         return Biquad(b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0)
     }
 
+    /// A knob value safe for the audio thread: finite and within the range, else 0.
+    static func clamped(_ db: Float) -> Float { db.isFinite ? min(max(db, -rangeDB), rangeDB) : 0 }
+
     /// Moves `current` toward `target` by at most `stepDB`.
     static func stepped(_ current: Float, to target: Float) -> Float {
         current < target ? min(current + stepDB, target) : max(current - stepDB, target)
@@ -50,6 +53,7 @@ nonisolated struct Biquad {
 /// One channel's filter memory (transposed direct form II).
 nonisolated struct BiquadState {
     var z1: Float = 0, z2: Float = 0
+    var finite: Bool { z1.isFinite && z2.isFinite }
 
     mutating func process(_ x: Float, _ c: Biquad) -> Float {
         let y = c.b0 * x + z1

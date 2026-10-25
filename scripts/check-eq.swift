@@ -37,6 +37,12 @@ import Foundation
         // The knob value steps 1 dB per buffer toward its target.
         assert(EQ.stepped(0, to: 5) == 1 && EQ.stepped(0, to: -0.5) == -0.5 && EQ.stepped(3, to: 3) == 3)
 
+        // Bad knob values become safe ones; a NaN sample marks the memory as not finite.
+        assert(EQ.clamped(.nan) == 0 && EQ.clamped(50) == EQ.rangeDB && EQ.clamped(-50) == -EQ.rangeDB && EQ.clamped(3) == 3)
+        var bad = BiquadState()
+        _ = bad.process(.nan, bass)
+        assert(!bad.finite && BiquadState().finite)
+
         print("check-eq: ok")
     }
 }

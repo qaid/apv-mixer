@@ -115,11 +115,14 @@ nonisolated func mixerIOProc(_ device: AudioObjectID,
         if bass != slot.pointee.bassNow {
             slot.pointee.bassNow = EQ.stepped(slot.pointee.bassNow, to: bass)
             slot.pointee.low = EQ.lowShelf(db: slot.pointee.bassNow, rate: rate)
+            // At 0 dB the shelf is the identity, and old memory would add a spike: clear it.
+            if slot.pointee.bassNow == 0 { slot.pointee.lowL = BiquadState(); slot.pointee.lowR = BiquadState() }
         }
         let treble = Float(bitPattern: slot.pointee.treble.load(ordering: .relaxed))
         if treble != slot.pointee.trebleNow {
             slot.pointee.trebleNow = EQ.stepped(slot.pointee.trebleNow, to: treble)
             slot.pointee.high = EQ.highShelf(db: slot.pointee.trebleNow, rate: rate)
+            if slot.pointee.trebleNow == 0 { slot.pointee.highL = BiquadState(); slot.pointee.highR = BiquadState() }
         }
         let eqOn = slot.pointee.bassNow != 0 || slot.pointee.trebleNow != 0
         let low = slot.pointee.low, high = slot.pointee.high
@@ -145,10 +148,11 @@ nonisolated func mixerIOProc(_ device: AudioObjectID,
             if let rDst { rDst[f * rDstStride + rDstOff] += r }
         }
         slot.pointee.current = gain
-        if eqOn {
+        // A NaN or Inf input sample would stay in the filter memory and silence the whole mix: drop that memory.
+        if eqOn, lowL.finite, lowR.finite, highL.finite, highR.finite {
             slot.pointee.lowL = lowL; slot.pointee.lowR = lowR; slot.pointee.highL = highL; slot.pointee.highR = highR
         } else {
-            // Flat: clear the memory so the next boost starts clean.
+            // Flat or not finite: clear the memory so the next boost starts clean.
             slot.pointee.lowL = BiquadState(); slot.pointee.lowR = BiquadState()
             slot.pointee.highL = BiquadState(); slot.pointee.highR = BiquadState()
         }
@@ -290,8 +294,8 @@ final class Engine {
             }
             if i < targets.count { slot.pointee.target.store(targets[i].bitPattern, ordering: .relaxed) }
             if i < eq.count {
-                slot.pointee.bass.store(eq[i].bass.bitPattern, ordering: .relaxed)
-                slot.pointee.treble.store(eq[i].treble.bitPattern, ordering: .relaxed)
+                slot.pointee.bass.store(EQ.clamped(eq[i].bass).bitPattern, ordering: .relaxed)
+                slot.pointee.treble.store(EQ.clamped(eq[i].treble).bitPattern, ordering: .relaxed)
             }
         }
         let p = UnsafeMutablePointer<EngineState>.allocate(capacity: 1)
@@ -337,8 +341,8 @@ final class Engine {
     /// Sets member `slot`'s Bass and Treble (dB). The IOProc steps to them 1 dB per buffer.
     func setEQ(slot: Int, bass: Float, treble: Float) {
         guard let s = state, slot >= 0, slot < slotCount else { return }
-        (s.pointee.slots + slot).pointee.bass.store(bass.bitPattern, ordering: .relaxed)
-        (s.pointee.slots + slot).pointee.treble.store(treble.bitPattern, ordering: .relaxed)
+        (s.pointee.slots + slot).pointee.bass.store(EQ.clamped(bass).bitPattern, ordering: .relaxed)
+        (s.pointee.slots + slot).pointee.treble.store(EQ.clamped(treble).bitPattern, ordering: .relaxed)
     }
 
     /// Sets the master gain (linear). The IOProc ramps to it in 15 ms.

@@ -51,9 +51,8 @@ import os
         self.deviceName = deviceName
         savedName = saved?["name"] as? String
         trimDB = Float(min(max(saved?["trim"] as? Double ?? 0, -24), 24))
-        let r = Double(EQ.rangeDB)
-        bassDB = Float(min(max(saved?["bass"] as? Double ?? 0, -r), r))
-        trebleDB = Float(min(max(saved?["treble"] as? Double ?? 0, -r), r))
+        bassDB = EQ.clamped(Float(saved?["bass"] as? Double ?? 0))
+        trebleDB = EQ.clamped(Float(saved?["treble"] as? Double ?? 0))
         // D4: new devices start silent, new apps at 0 dB.
         position = Float(min(max(saved?["fader"] as? Double ?? Double(isApp ? Gain.detent : 0), 0), 1))
         muted = saved?["mute"] as? Bool ?? false
@@ -484,7 +483,7 @@ struct OutputChoice: Identifiable, Equatable {
     }
 
     func setBass(_ s: Strip, _ db: Float) {
-        let v = min(max(db, -EQ.rangeDB), EQ.rangeDB)
+        let v = EQ.clamped(db)
         guard v != s.bassDB else { return }
         s.bassDB = v
         persist(s)
@@ -492,7 +491,7 @@ struct OutputChoice: Identifiable, Equatable {
     }
 
     func setTreble(_ s: Strip, _ db: Float) {
-        let v = min(max(db, -EQ.rangeDB), EQ.rangeDB)
+        let v = EQ.clamped(db)
         guard v != s.trebleDB else { return }
         s.trebleDB = v
         persist(s)
