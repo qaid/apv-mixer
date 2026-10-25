@@ -37,6 +37,7 @@ To change a permission later: System Settings > Privacy & Security > Microphone,
 
 - **Level knob** (the large silver knob): drag up or down, or scroll over it. The bottom is silent. Double-click to go to 0 dB (no change in loudness). New inputs start at the bottom, so the microphone cannot feed back into the speakers.
 - **Trim**: a small extra boost or cut for one strip. Double-click to reset it.
+- **Bass** and **Treble** (input strips only): more or less low end and high end, up to 12 dB each way. Double-click to reset them.
 - **Device gain**: the Mac's own input level for that device. It also changes the level that other apps record. It is grey when the device has none (the turntable has none).
 - **Default**: lights on the input that the Mac uses by default. Click it to make that input the default.
 - **Mute**: glows red when on.

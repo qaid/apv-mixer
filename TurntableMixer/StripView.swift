@@ -10,6 +10,7 @@ struct StripView: View {
     @State private var draft = ""
 
     static let width: CGFloat = 176
+    private static let smallColumn: CGFloat = 70   // one column width, so Bass and Treble sit under Device gain and Trim
 
     var body: some View {
         VStack(spacing: 12) {
@@ -21,16 +22,17 @@ struct StripView: View {
                 defaultButton
             }
             HStack(spacing: 6) {
-                if !strip.isApp { labelled("Device gain") { deviceGainKnob } }
-                labelled("Trim") { trimKnob }
+                if !strip.isApp { labelled("Device gain", width: Self.smallColumn) { deviceGainKnob } }
+                labelled("Trim", width: Self.smallColumn) { trimKnob }
             }
-            HStack(spacing: 6) {
-                labelled("Bass") { eqKnob("Bass", strip.bassDB) { mixer.setBass(strip, $0) } }
-                labelled("Treble") { eqKnob("Treble", strip.trebleDB) { mixer.setTreble(strip, $0) } }
+            if strip.isApp {
+                Color.clear.frame(height: 58)   // the Bass and Treble row's height; keeps the meters level with the input strips
+            } else {
+                HStack(spacing: 6) {
+                    labelled("Bass", width: Self.smallColumn) { eqKnob("Bass", strip.bassDB) { mixer.setBass(strip, $0) } }
+                    labelled("Treble", width: Self.smallColumn) { eqKnob("Treble", strip.trebleDB) { mixer.setTreble(strip, $0) } }
+                }
             }
-            .opacity(strip.isApp ? 0 : 1)   // hidden on app strips; keeps the meters level with the input strips
-            .disabled(strip.isApp)
-            .accessibilityHidden(strip.isApp)
             VUMeter(needleDB: strip.needleDB, clip: strip.clip)
             muteButton
             labelled("Level") { levelKnob }
@@ -140,12 +142,12 @@ struct StripView: View {
 
     // MARK: Knobs
 
-    private func labelled<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
+    private func labelled<Content: View>(_ title: String, width: CGFloat? = nil, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(spacing: 2) {
             content()
             Text(title).engraved(size: 9).lineLimit(1)
         }
-        .frame(width: 70)   // one column width, so Bass and Treble sit under Device gain and Trim
+        .frame(width: width)
     }
 
     private var deviceGainKnob: some View {

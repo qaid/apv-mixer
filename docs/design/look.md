@@ -20,7 +20,7 @@ Exact colours and sizes live in the code (`Faceplate.swift`, `Knob.swift`, `VUMe
 ## Controls
 
 - **Level knob**: the large chrome knob at the bottom of each strip (the reference's CH ONE knob). Brushed-aluminium cap, black skirt, a pointer line, a ring of tick dots; the dots up to the current position light orange. The 0 dB tick is larger.
-- **Small knobs** (Trim, Device gain): black, with a white pointer line, like the reference's TRIM and AUX knobs.
+- **Small knobs** (Trim, Device gain, Bass, Treble): black, with a white pointer line, like the reference's TRIM and AUX knobs.
 - **Mute**: a round dark button with a thin light and dark bezel, no red ring, like the reference's CUE button. Lit: the button glows red.
 - **Default**: a capsule button. Lit: amber glow.
 - Disabled controls fade; they keep their shape.
