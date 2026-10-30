@@ -23,6 +23,7 @@ Exact colours and sizes live in the code (`Faceplate.swift`, `Knob.swift`, `VUMe
 - **Small knobs** (Trim, Device gain, Bass, Treble): black, with a white pointer line, like the reference's TRIM and AUX knobs.
 - **Mute**: a round dark button with a thin light and dark bezel, no red ring, like the reference's CUE button. Lit: the button glows red.
 - **Default**: a capsule button. Lit: amber glow.
+- **Power** (input strips): a small round dark button with a power symbol, left of Default, with no text label. On: amber symbol and glow. Off: grey symbol, no glow.
 - Disabled controls fade; they keep their shape.
 
 ## Meter
@@ -48,6 +49,7 @@ Exact colours and sizes live in the code (`Faceplate.swift`, `Knob.swift`, `VUMe
 
 - No signal: the strip stays, with a dim "No signal" label.
 - Disconnected: the whole strip fades.
+- Off: the strip stays at full strength, with an "Off" label. The meter needle rests.
 - Banners sit above the strips, full width.
 
 ## How to check
