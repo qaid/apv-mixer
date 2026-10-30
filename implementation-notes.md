@@ -18,6 +18,7 @@
 - **The software volume (D8) starts at 100 % at each launch and is not saved.** Reason: §3.7 persistence covers strips only.
 - **After the owner moves the master volume, balance or mute, the mixer ignores change notices for that control for 0.3 s, then reads it once (§7.9 says only: ignore a value equal to the last one).** Reason: a drag sends many values, and a late notice for an earlier value would pull the knob back.
 - **Input strips have Bass and Treble knobs (§3 lists EQ as out of scope for v1).** Each is a shelving filter (RBJ cookbook, slope 1): Bass at 100 Hz, Treble at 8 kHz, -12 to +12 dB, saved per device. They act on the raw input before Trim and the fader, so "No signal" still reads the raw input and the clip light includes a boost. The audio thread steps each value 1 dB per buffer toward the knob. App strips have no Bass and Treble. Reason: the owner's request (2026-10-25), to improve the turntable's sound.
+- **Input strips have a power button, left of DEFAULT (not in the spec).** Off removes the device from the engine at once, so macOS closes it and the mic-in-use indicator goes off; the level and other settings stay. The off state is saved per device. Mute does not do this, because mute is a gain of 0 and keeps the device open. Reason: the owner's request (2026-10-30), to release the OBSBOT camera's microphone while the mixer is open.
 
 ## Sound settings left out (spec R8)
 
