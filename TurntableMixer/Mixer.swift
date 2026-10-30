@@ -17,6 +17,7 @@ import os
     fileprivate(set) var bassDB: Float = 0            // -12...+12 (EQ.rangeDB), input strips only
     fileprivate(set) var trebleDB: Float = 0          // -12...+12 (EQ.rangeDB), input strips only
     fileprivate(set) var muted = false
+    fileprivate(set) var off = false                  // input strips: powered off, so the mixer does not open the device
     fileprivate(set) var needleDB: Float = Mixer.needleFloorDB   // post-gain level, VU ballistics applied
     fileprivate(set) var clip: Float = 0              // clip light 0...1: full while clipping, fades out over ClipFade.seconds
     fileprivate(set) var noSignal = false
@@ -56,6 +57,7 @@ import os
         // D4: new devices start silent, new apps at 0 dB.
         position = Float(min(max(saved?["fader"] as? Double ?? Double(isApp ? Gain.detent : 0), 0), 1))
         muted = saved?["mute"] as? Bool ?? false
+        off = saved?["off"] as? Bool ?? false
     }
 }
 
@@ -365,11 +367,11 @@ struct OutputChoice: Identifiable, Equatable {
             let strip: Strip
             if let existing = list.first(where: { $0.uid == d.uid }) {
                 strip = existing
-                if !strip.connected { strip.connected = true; strip.wanted = strip.position > 0 }
+                if !strip.connected { strip.connected = true; strip.wanted = strip.position > 0 && !strip.off }
             } else {
                 strip = Strip(uid: d.uid, deviceName: d.name, saved: saved[d.uid])
                 strip.symbol = Audio.symbol(transport: d.transport)
-                strip.wanted = strip.position > 0
+                strip.wanted = strip.position > 0 && !strip.off
                 list.append(strip)
             }
             if strip.deviceName != d.name { strip.deviceName = d.name }
@@ -440,6 +442,7 @@ struct OutputChoice: Identifiable, Equatable {
         entry["treble"] = Double(s.trebleDB)
         entry["fader"] = Double(s.position)
         entry["mute"] = s.muted
+        if !s.isApp { entry["off"] = s.off }
         if s.isApp {
             savedApps[s.uid] = entry
             UserDefaults.standard.set(savedApps, forKey: Self.appsKey)
@@ -460,7 +463,7 @@ struct OutputChoice: Identifiable, Equatable {
             // The tap stays while the strip exists: removing it would un-mute the app (spec D3). Bottom = gain 0.
         } else if p > 0 {
             s.removal?.cancel(); s.removal = nil
-            if s.connected, !s.wanted { s.wanted = true; reconcile() }   // raised from 0: rebuild at once
+            if s.connected, !s.off, !s.wanted { s.wanted = true; reconcile() }   // raised from 0: rebuild at once
         } else if s.wanted, s.removal == nil {
             // Fell to 0: leave the engine only after 1 s at 0 (a rise cancels this).
             s.removal = Task { [weak self, weak s] in
@@ -506,6 +509,16 @@ struct OutputChoice: Identifiable, Equatable {
         s.muted.toggle()   // mute is a gain of 0; membership does not change
         persist(s)
         pushGain(s)
+    }
+
+    /// Power off: the strip leaves the engine at once, so macOS closes the device (mic-in-use indicator off). Settings stay.
+    func togglePower(_ s: Strip) {
+        guard !s.isApp else { return }
+        s.off.toggle()
+        persist(s)
+        s.removal?.cancel(); s.removal = nil
+        s.wanted = s.connected && !s.off && s.position > 0
+        reconcile()
     }
 
     func rename(_ s: Strip, _ name: String) {
@@ -808,11 +821,11 @@ struct OutputChoice: Identifiable, Equatable {
 extension Mixer {
     static func fixtureStrip(uid: String, name: String, isApp: Bool = false, connected: Bool = true, position: Float = 0.5,
                              trimDB: Float = 0, bassDB: Float = 0, trebleDB: Float = 0, muted: Bool = false, needleDB: Float = Mixer.needleFloorDB, clip: Float = 0,
-                             noSignal: Bool = false, isDefaultInput: Bool = false, deviceGain: Float? = nil,
+                             noSignal: Bool = false, isDefaultInput: Bool = false, deviceGain: Float? = nil, off: Bool = false,
                              icon: NSImage? = nil, error: String? = nil) -> Strip {
         let s = Strip(uid: uid, deviceName: name, saved: nil, isApp: isApp)
         s.connected = connected; s.position = position; s.trimDB = trimDB; s.bassDB = bassDB; s.trebleDB = trebleDB; s.muted = muted; s.needleDB = needleDB
-        s.clip = clip; s.noSignal = noSignal; s.isDefaultInput = isDefaultInput; s.deviceGain = deviceGain
+        s.clip = clip; s.noSignal = noSignal; s.isDefaultInput = isDefaultInput; s.deviceGain = deviceGain; s.off = off
         s.icon = icon; s.error = error
         return s
     }

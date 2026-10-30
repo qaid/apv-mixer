@@ -26,6 +26,7 @@ import AppKit
             Mixer.fixtureStrip(uid: "c", name: "Clip lit", position: 0.7, needleDB: -2, clip: 1),
             Mixer.fixtureStrip(uid: "f", name: "Clip fading", position: 0.7, needleDB: -6, clip: 0.4),
             Mixer.fixtureStrip(uid: "d", name: "Muted", position: 0.7, muted: true, needleDB: -14),
+            Mixer.fixtureStrip(uid: "o", name: "Off", position: 0.7, off: true),
         ]
         let broken = Mixer.fixtureStrip(uid: "e", name: "Spotify", isApp: true, position: 0.7, error: "Could not tap Spotify.")
         return [

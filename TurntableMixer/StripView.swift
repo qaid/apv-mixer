@@ -19,7 +19,7 @@ struct StripView: View {
             if strip.isApp {
                 Color.clear.frame(height: 22)   // keeps the meters level with the input strips
             } else {
-                defaultButton
+                HStack(spacing: 8) { powerButton; defaultButton }
             }
             HStack(spacing: 6) {
                 if !strip.isApp { labelled("Device gain", width: Self.smallColumn) { deviceGainKnob } }
@@ -87,6 +87,8 @@ struct StripView: View {
     @ViewBuilder private var stateLabel: some View {
         if !strip.connected {
             Text("Disconnected").engraved(size: 10)
+        } else if strip.off {
+            Text("Off").engraved(size: 10)
         } else if let error = strip.error {
             Text(error).engraved(size: 10).lineLimit(2).multilineTextAlignment(.center)
         } else if strip.noSignal {
@@ -116,6 +118,24 @@ struct StripView: View {
         .buttonStyle(.plain)
         .help("Make this the default input")
         .accessibilityValue(lit ? "On" : "Off")
+    }
+
+    /// Lit = on. Off releases the device, so macOS turns its mic-in-use indicator off.
+    private var powerButton: some View {
+        let on = !strip.off
+        return Button { mixer.togglePower(strip) } label: {
+            Image(systemName: "power")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(on ? Color(red: 1, green: 0.78, blue: 0.4) : Color(white: 0.5))
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(LinearGradient(colors: [Color(white: 0.2), Color(white: 0.08)], startPoint: .top, endPoint: .bottom)))
+                .overlay(Circle().stroke(scheme == .dark ? Color(white: 0.5) : .black.opacity(0.6), lineWidth: 1))
+                .shadow(color: on ? Color.orange.opacity(0.5) : .clear, radius: 4)
+        }
+        .buttonStyle(.plain)
+        .help(on ? "Turn off: the mixer releases this device" : "Turn on")
+        .accessibilityLabel("Power")
+        .accessibilityValue(on ? "On" : "Off")
     }
 
     private var muteButton: some View {
